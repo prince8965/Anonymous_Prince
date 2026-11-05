@@ -1,4 +1,3 @@
-import { SEED_COMMUNITIES } from '../data/communities'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import type { Category, Community, UserRole } from '../types'
 import { authAdapter } from './authAdapter'
@@ -45,12 +44,7 @@ export async function getCommunities(): Promise<CommunityWithState[]> {
           createdAt: row.created_at,
         }))
 
-        // Merge with seed communities so demo items still appear alongside user created ones
-        const seedMapped = SEED_COMMUNITIES.filter(
-          (sc) => !liveCommunities.some((lc) => lc.id === sc.id || lc.name.toLowerCase() === sc.name.toLowerCase()),
-        )
-        const combined = [...liveCommunities, ...seedMapped]
-        return combined.map((c) => withState(c, followed))
+        return liveCommunities.map((c) => withState(c, followed))
       }
     } catch {
       // fallback to store

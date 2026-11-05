@@ -1,4 +1,3 @@
-import { SEED_COMMUNITIES } from '../data/communities'
 import type {
   Category,
   CommunityPost,
@@ -13,6 +12,7 @@ import { DEMO_OWNER_ID, authAdapter } from './authAdapter'
 import { delay, notifyChange } from './bus'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import {
+  readCommunities,
   readCommunityPosts,
   readEvents,
   readFollowedIds,
@@ -185,7 +185,7 @@ export async function createPost(input: CommunityPostInput): Promise<CommunityPo
   // Lookup community name if attached
   let communityName: string | undefined
   if (input.communityId) {
-    const comm = SEED_COMMUNITIES.find((c) => c.id === input.communityId)
+    const comm = readCommunities().find((c) => c.id === input.communityId)
     communityName = comm?.name
   }
 
@@ -269,7 +269,7 @@ export async function updatePost(id: string, input: Partial<CommunityPostInput>)
   // Lookup community name if community changed
   let communityName = target.communityName
   if (input.communityId !== undefined) {
-    const comm = SEED_COMMUNITIES.find((c) => c.id === input.communityId)
+    const comm = readCommunities().find((c) => c.id === input.communityId)
     communityName = comm?.name
   }
 

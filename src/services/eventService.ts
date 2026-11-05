@@ -1,11 +1,10 @@
-import { SEED_COMMUNITIES } from '../data/communities'
 import { DEFAULT_LOCALITY_ID, getLocality } from '../data/localities'
 import type { Category, Event, EventFilters, EventInput, EventStatus, EventWithMeta, PaginatedEvents } from '../types'
 import { distanceKm } from '../utils/geo'
 import { isSameLocalDay, toDateInput } from '../utils/format'
 import { delay } from './bus'
 import { DEMO_OWNER_ID, authAdapter } from './authAdapter'
-import { readEvents, readFollowedIds, readRsvps, writeEvents } from './db'
+import { readCommunities, readEvents, readFollowedIds, readRsvps, writeEvents } from './db'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import { getOrganizationByOwnerId } from './communityPostService'
 
@@ -93,7 +92,7 @@ export function enrichEvent(
   if (opts.interests.includes(event.category))
     reasons.push({ weight: 40, text: `Matches your interest in ${event.category}` })
   if (event.communityId && opts.followedIds.has(event.communityId)) {
-    const c = SEED_COMMUNITIES.find((x) => x.id === event.communityId)
+    const c = readCommunities().find((x) => x.id === event.communityId)
     reasons.push({ weight: 35, text: `From ${c?.name ?? 'a community'} you follow` })
   }
   if (dist <= 3) reasons.push({ weight: 20, text: `Close to ${loc.name}` })

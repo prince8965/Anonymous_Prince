@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Edit3, ImagePlus, Trash2, X } from 'lucide-react'
-import { SEED_COMMUNITIES } from '../../data/communities'
 import { LOCALITIES } from '../../data/localities'
-import { SEED_ORGANIZATIONS } from '../../data/organizations'
 import { useToast } from '../../hooks/ToastContext'
-import { getEvents, updatePost } from '../../services'
-import { CATEGORIES, type Category, type CommunityPost, type Event } from '../../types'
+import { getCommunities, getEvents, getOrganizations, updatePost } from '../../services'
+import { CATEGORIES, type Category, type Community, type CommunityPost, type Event, type Organization } from '../../types'
 import { fileToResizedDataUrl } from '../../utils/image'
 
 interface Props {
@@ -30,6 +28,8 @@ export function EditPostModal({ post, open, onClose, onUpdated }: Props) {
   const [customEventLocation, setCustomEventLocation] = useState('')
   const [customEventLink, setCustomEventLink] = useState('')
 
+  const [communitiesList, setCommunitiesList] = useState<Community[]>([])
+  const [organizationsList, setOrganizationsList] = useState<Organization[]>([])
   const [availableEvents, setAvailableEvents] = useState<Event[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -50,6 +50,8 @@ export function EditPostModal({ post, open, onClose, onUpdated }: Props) {
     getEvents().then((evts) => {
       setAvailableEvents(evts.filter((e) => e.status === 'published'))
     })
+    getCommunities().then(setCommunitiesList)
+    getOrganizations().then(setOrganizationsList)
   }, [open, post])
 
   useEffect(() => {
@@ -197,7 +199,7 @@ export function EditPostModal({ post, open, onClose, onUpdated }: Props) {
                 className="input text-xs"
               >
                 <option value="" className="bg-secondary text-ink-faint">None (General Post)</option>
-                {SEED_COMMUNITIES.map((c) => (
+                {communitiesList.map((c) => (
                   <option key={c.id} value={c.id} className="bg-secondary text-white">
                     {c.name}
                   </option>
@@ -214,7 +216,7 @@ export function EditPostModal({ post, open, onClose, onUpdated }: Props) {
                 className="input text-xs"
               >
                 <option value="" className="bg-secondary text-ink-faint">None (Personal Post)</option>
-                {SEED_ORGANIZATIONS.map((org) => (
+                {organizationsList.map((org) => (
                   <option key={org.id} value={org.id} className="bg-secondary text-white">
                     {org.name} {org.isVerified ? '(Verified)' : ''}
                   </option>

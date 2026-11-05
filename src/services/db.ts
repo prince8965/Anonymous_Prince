@@ -69,19 +69,9 @@ export function writeEvents(events: Event[]): void {
 export function readRsvps(): RSVP[] {
   const stored = readStore<RSVP[] | null>(RSVPS_KEY, null)
   if (stored) return stored
-  // One demo RSVP to a past event so the "Past" tab is not empty on first run.
-  const seeded: RSVP[] = [
-    {
-      id: 'rsvp-seed-1',
-      eventId: 'evt-past-python',
-      userId: 'guest',
-      status: 'going',
-      createdAt: new Date(Date.now() - 10 * 86_400_000).toISOString(),
-      ticketCode: 'NC-DEMO01',
-    },
-  ]
-  writeStore(RSVPS_KEY, seeded)
-  return seeded
+  const initial: RSVP[] = []
+  writeStore(RSVPS_KEY, initial)
+  return initial
 }
 
 export function writeRsvps(rsvps: RSVP[]): void {
@@ -100,7 +90,7 @@ export function writeFollowedIds(ids: string[]): void {
 
 export function readCommunities(): Community[] {
   const stored = readStore<Community[] | null>(COMMUNITIES_KEY, null)
-  if (stored && Array.isArray(stored) && stored.length > 0) return stored
+  if (stored && Array.isArray(stored)) return stored
   writeStore(COMMUNITIES_KEY, SEED_COMMUNITIES)
   return SEED_COMMUNITIES
 }
@@ -126,14 +116,9 @@ export function writeCommunityPosts(posts: CommunityPost[]): void {
 export function readPostLikes(): Record<string, string[]> {
   const stored = readStore<Record<string, string[]> | null>(POST_LIKES_KEY, null)
   if (stored) return stored
-  // Seed with initial demo likes
-  const seeded: Record<string, string[]> = {
-    'post-1': ['u-demo', 'u-tanvi', 'u-karan'],
-    'post-3': ['u-manya', 'u-priya'],
-    'post-8': ['u-demo', 'u-rohit'],
-  }
-  writeStore(POST_LIKES_KEY, seeded)
-  return seeded
+  const initial: Record<string, string[]> = {}
+  writeStore(POST_LIKES_KEY, initial)
+  return initial
 }
 
 export function writePostLikes(likes: Record<string, string[]>): void {
@@ -168,9 +153,9 @@ export function writeOrganizations(orgs: Organization[]): void {
 export function readFollowedOrgIds(): string[] {
   const stored = readStore<string[] | null>(ORG_FOLLOWS_KEY, null)
   if (stored) return stored
-  const seeded = ['org-acm', 'org-gdg'] // default followed for demo richness
-  writeStore(ORG_FOLLOWS_KEY, seeded)
-  return seeded
+  const initial: string[] = []
+  writeStore(ORG_FOLLOWS_KEY, initial)
+  return initial
 }
 
 export function writeFollowedOrgIds(ids: string[]): void {

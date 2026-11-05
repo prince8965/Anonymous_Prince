@@ -9,13 +9,11 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { SEED_COMMUNITIES } from '../../data/communities'
 import { LOCALITIES } from '../../data/localities'
-import { SEED_ORGANIZATIONS } from '../../data/organizations'
 import { useApp } from '../../hooks/AppContext'
 import { useToast } from '../../hooks/ToastContext'
-import { createPost, getEvents } from '../../services'
-import { CATEGORIES, type Category, type Event } from '../../types'
+import { createPost, getCommunities, getEvents, getOrganizations } from '../../services'
+import { CATEGORIES, type Category, type Community, type Event, type Organization } from '../../types'
 import { fileToResizedDataUrl } from '../../utils/image'
 
 interface Props {
@@ -41,6 +39,10 @@ export function CreatePostModal({ open, onClose, onCreated, initialEventId, init
   const [imageUrl, setImageUrl] = useState<string | undefined>()
   const [imageError, setImageError] = useState<string | null>()
   const [isDragging, setIsDragging] = useState(false)
+
+  // Communities and Organizations
+  const [communitiesList, setCommunitiesList] = useState<Community[]>([])
+  const [organizationsList, setOrganizationsList] = useState<Organization[]>([])
 
   // Event attachment
   const [availableEvents, setAvailableEvents] = useState<Event[]>([])
@@ -68,12 +70,14 @@ export function CreatePostModal({ open, onClose, onCreated, initialEventId, init
     }
   }, [open, initialMode])
 
-  // Fetch available events for attachment
+  // Fetch available events, communities, and organizations
   useEffect(() => {
     if (!open) return
     getEvents().then((evts) => {
       setAvailableEvents(evts.filter((e) => e.status === 'published'))
     })
+    getCommunities().then(setCommunitiesList)
+    getOrganizations().then(setOrganizationsList)
   }, [open])
 
   // If initialEventId is provided, pre-fill
@@ -272,7 +276,7 @@ export function CreatePostModal({ open, onClose, onCreated, initialEventId, init
                 <option value="" className="bg-secondary text-ink-faint">
                   None (General Post)
                 </option>
-                {SEED_COMMUNITIES.map((c) => (
+                {communitiesList.map((c) => (
                   <option key={c.id} value={c.id} className="bg-secondary text-white">
                     {c.name} ({c.category})
                   </option>
@@ -293,7 +297,7 @@ export function CreatePostModal({ open, onClose, onCreated, initialEventId, init
                 <option value="" className="bg-secondary text-ink-faint">
                   Post as Myself (Student / Member)
                 </option>
-                {SEED_ORGANIZATIONS.map((org) => (
+                {organizationsList.map((org) => (
                   <option key={org.id} value={org.id} className="bg-secondary text-white">
                     {org.name} {org.isVerified ? '(Verified)' : ''}
                   </option>

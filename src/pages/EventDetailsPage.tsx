@@ -14,13 +14,13 @@ import { EmptyState } from '../components/ui/EmptyState'
 import { ErrorState } from '../components/ui/ErrorState'
 import { Skeleton } from '../components/ui/Skeleton'
 import { getLocality } from '../data/localities'
-import { SEED_COMMUNITIES } from '../data/communities'
 import { useApp } from '../hooks/AppContext'
 import { useAsync } from '../hooks/useAsync'
 import {
   getEventById,
   searchEvents,
   defaultFilters,
+  getCommunities,
   getOrganizationById,
   getOrganizationByOwnerId,
   getOrganizationCompletedEventsCount,
@@ -81,7 +81,8 @@ export default function EventDetailsPage() {
       </div>
     )
 
-  const community = SEED_COMMUNITIES.find((c) => c.id === event.communityId)
+  const communitiesRes = useAsync(getCommunities, [])
+  const community = communitiesRes.data?.find((c) => c.id === event?.communityId)
   const locality = getLocality(event.localityId)
   const distance = formatDistance(event.distanceKm)
   const relatedEvents = (related.data ?? [])
