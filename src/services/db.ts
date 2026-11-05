@@ -2,7 +2,7 @@
  * Raw localStorage "tables". Services are the only code that should import this file.
  * Replace with real API calls when the backend is ready.
  */
-import { SEED_COMMUNITIES as _SEED_COMMUNITIES } from '../data/communities'
+import { SEED_COMMUNITIES } from '../data/communities'
 import { SEED_COMMENTS } from '../data/communityComments'
 import { SEED_POSTS } from '../data/communityPosts'
 import { SEED_EVENTS } from '../data/events'
@@ -10,6 +10,7 @@ import { SEED_ORGANIZATIONS } from '../data/organizations'
 import type {
   AdminAuditLog,
   AppNotification,
+  Community,
   CommunityPost,
   Event,
   EventRegistration,
@@ -29,7 +30,7 @@ import type {
 import { readStore, writeStore } from '../utils/storage'
 import { notifyChange } from './bus'
 
-void _SEED_COMMUNITIES
+void SEED_COMMUNITIES
 
 const EVENTS_KEY = 'events.v1'
 const RSVPS_KEY = 'rsvps.v1'
@@ -43,6 +44,7 @@ const JUDGE_ASSIGNMENTS_KEY = 'judge_assignments.v1'
 const SCORES_KEY = 'submission_scores.v1'
 const STORAGE_FILES_KEY = 'storage_files.v1'
 const FOLLOWS_KEY = 'follows.v1'
+const COMMUNITIES_KEY = 'communities.v1'
 const COMMUNITY_POSTS_KEY = 'community_posts.v1'
 const POST_LIKES_KEY = 'post_likes.v1'
 const POST_COMMENTS_KEY = 'post_comments.v1'
@@ -93,6 +95,18 @@ export function readFollowedIds(): string[] {
 
 export function writeFollowedIds(ids: string[]): void {
   writeStore(FOLLOWS_KEY, ids)
+  notifyChange()
+}
+
+export function readCommunities(): Community[] {
+  const stored = readStore<Community[] | null>(COMMUNITIES_KEY, null)
+  if (stored && Array.isArray(stored) && stored.length > 0) return stored
+  writeStore(COMMUNITIES_KEY, SEED_COMMUNITIES)
+  return SEED_COMMUNITIES
+}
+
+export function writeCommunities(communities: Community[]): void {
+  writeStore(COMMUNITIES_KEY, communities)
   notifyChange()
 }
 

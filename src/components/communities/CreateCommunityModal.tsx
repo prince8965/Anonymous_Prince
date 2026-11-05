@@ -1,31 +1,38 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertCircle, Plus, Users, X } from 'lucide-react'
+import { AlertCircle, Loader2, Plus, Users, X } from 'lucide-react'
+import { LOCALITIES } from '../../data/localities'
+import { useAuth } from '../../hooks/AuthContext'
 import { useToast } from '../../hooks/ToastContext'
+import { createCommunity, type CommunityWithState } from '../../services'
+import { CATEGORIES, type Category } from '../../types'
 
 interface Props {
   open: boolean
   onClose: () => void
-  onCreated?: (community: { name: string; category: string; description: string }) => void
+  onCreated?: (community: CommunityWithState) => void
 }
 
-const CATEGORIES = [
-  'Technology',
-  'AI/ML',
-  'Web Development',
-  'Programming',
-  'Education',
-  'Business',
-  'Design',
-  'Other',
-] as const
+const ACCENT_COLORS = [
+  '#00F2FE', // Brand Cyan
+  '#A855F7', // Purple
+  '#38BDF8', // Sky Blue
+  '#10B981', // Emerald
+  '#F59E0B', // Amber
+  '#EC4899', // Pink
+  '#818CF8', // Indigo
+  '#F43F5E', // Rose
+]
 
 export function CreateCommunityModal({ open, onClose, onCreated }: Props) {
+  const { user } = useAuth()
   const { notify } = useToast()
   const nameInputRef = useRef<HTMLInputElement>(null)
 
   const [name, setName] = useState('')
-  const [category, setCategory] = useState('')
+  const [category, setCategory] = useState<Category>('Technology')
   const [description, setDescription] = useState('')
+  const [localityId, setLocalityId] = useState('andheri')
+  const [accent, setAccent] = useState(ACCENT_COLORS[0])
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -33,8 +40,10 @@ export function CreateCommunityModal({ open, onClose, onCreated }: Props) {
   useEffect(() => {
     if (open) {
       setName('')
-      setCategory('')
+      setCategory('Technology')
       setDescription('')
+      setLocalityId('andheri')
+      setAccent(ACCENT_COLORS[0])
       setErrorMessage(null)
       setSubmitting(false)
       const timer = setTimeout(() => {
@@ -68,7 +77,11 @@ export function CreateCommunityModal({ open, onClose, onCreated }: Props) {
     e.preventDefault()
     setErrorMessage(null)
 
-    // Form validation
+    if (!user) {
+      setErrorMessage('You must be signed in to create a community.')
+      return
+    }
+
     const trimmedName = name.trim()
     const trimmedDesc = description.trim()
 
@@ -77,38 +90,29 @@ export function CreateCommunityModal({ open, onClose, onCreated }: Props) {
       return
     }
 
-    if (!category) {
-      setErrorMessage('Please select a category.')
-      return
-    }
-
     if (!trimmedDesc) {
       setErrorMessage('Please describe what your community is about.')
       return
     }
 
-    // Prevent duplicate submissions
     if (submitting) return
     setSubmitting(true)
 
     try {
-      // Simulate submission handling (backend API for permanent community creation does not exist)
-      await new Promise((resolve) => setTimeout(resolve, 600))
-
-      notify(
-        `Community request received for "${trimmedName}". Note: Persistent community creation backend is not yet implemented (prototype demo).`,
-        'info',
-      )
-
-      onCreated?.({
+      const created = await createCommunity({
         name: trimmedName,
         category,
         description: trimmedDesc,
+        localityId,
+        accent,
       })
 
+      notify(`Community "${trimmedName}" created and live! Visible to all students and organizations.`, 'success')
+
+      onCreated?.(created)
       onClose()
-    } catch {
-      setErrorMessage('An unexpected error occurred. Please try again.')
+    } catch (err: any) {
+      setErrorMessage(err.message || 'An unexpected error occurred. Please try again.')
     } finally {
       setSubmitting(false)
     }
@@ -136,15 +140,18 @@ export function CreateCommunityModal({ open, onClose, onCreated }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#334155]/60 pb-4">
           <div className="flex items-center gap-2.5 text-white">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand/10 border border-brand/30 text-brand">
+            <div
+              className="flex h-10 w-10 items-center justify-center rounded-xl text-[#0B0F19] font-bold shadow-cyber transition-colors"
+              style={{ backgroundColor: accent }}
+            >
               <Users className="h-5 w-5" />
             </div>
             <div>
               <h2 id="create-community-title" className="text-lg font-bold text-white">
-                Create a New Community
+                Create a Community
               </h2>
               <p className="text-xs text-ink-muted">
-                Start a group for your campus, tech stack, or hobby.
+                Open to both student participants and campus organizations.
               </p>
             </div>
           </div>
@@ -171,11 +178,6 @@ export function CreateCommunityModal({ open, onClose, onCreated }: Props) {
             </div>
           )}
 
-          {/* Notice explaining preview / prototype state */}
-          <div className="rounded-xl border border-brand/20 bg-brand/5 p-3 text-xs text-ink-muted leading-relaxed">
-            <strong className="text-brand">Community Creation:</strong> Provide your community details below. As NearCircle is currently in prototype mode, new communities are submitted for review.
-          </div>
-
           {/* 1. Community Name */}
           <div>
             <label
@@ -193,7 +195,7 @@ export function CreateCommunityModal({ open, onClose, onCreated }: Props) {
                 setName(e.target.value)
                 if (errorMessage) setErrorMessage(null)
               }}
-              placeholder="Enter community name"
+              placeholder="e.g. Mumbai AI Builders, Navi Mumbai Design Club"
               className="input text-sm"
               maxLength={80}
               required
@@ -201,37 +203,79 @@ export function CreateCommunityModal({ open, onClose, onCreated }: Props) {
             />
           </div>
 
-          {/* 2. Category */}
-          <div>
-            <label
-              htmlFor="community-category-select"
-              className="label text-xs font-semibold uppercase tracking-wider text-ink-faint"
-            >
-              Category <span className="text-rose-400">*</span>
-            </label>
-            <select
-              id="community-category-select"
-              value={category}
-              onChange={(e) => {
-                setCategory(e.target.value)
-                if (errorMessage) setErrorMessage(null)
-              }}
-              className="input text-sm cursor-pointer"
-              required
-              disabled={submitting}
-            >
-              <option value="" disabled className="bg-secondary text-ink-faint">
-                Select a category
-              </option>
-              {CATEGORIES.map((cat) => (
-                <option key={cat} value={cat} className="bg-secondary text-white">
-                  {cat}
-                </option>
-              ))}
-            </select>
+          {/* 2. Category & Locality in grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label
+                htmlFor="community-category-select"
+                className="label text-xs font-semibold uppercase tracking-wider text-ink-faint"
+              >
+                Category <span className="text-rose-400">*</span>
+              </label>
+              <select
+                id="community-category-select"
+                value={category}
+                onChange={(e) => {
+                  setCategory(e.target.value as Category)
+                  if (errorMessage) setErrorMessage(null)
+                }}
+                className="input text-sm cursor-pointer"
+                required
+                disabled={submitting}
+              >
+                {CATEGORIES.map((cat) => (
+                  <option key={cat} value={cat} className="bg-secondary text-white">
+                    {cat}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label
+                htmlFor="community-locality-select"
+                className="label text-xs font-semibold uppercase tracking-wider text-ink-faint"
+              >
+                Locality Hub
+              </label>
+              <select
+                id="community-locality-select"
+                value={localityId}
+                onChange={(e) => setLocalityId(e.target.value)}
+                className="input text-sm cursor-pointer"
+                disabled={submitting}
+              >
+                {LOCALITIES.map((loc) => (
+                  <option key={loc.id} value={loc.id} className="bg-secondary text-white">
+                    {loc.name} ({loc.city})
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          {/* 3. Description */}
+          {/* 3. Accent Color Picker */}
+          <div>
+            <label className="label text-xs font-semibold uppercase tracking-wider text-ink-faint">
+              Theme Accent Color
+            </label>
+            <div className="flex items-center gap-2 pt-1">
+              {ACCENT_COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setAccent(c)}
+                  className={`h-7 w-7 rounded-full transition-transform cursor-pointer ${
+                    accent === c ? 'scale-125 ring-2 ring-white ring-offset-2 ring-offset-canvas' : 'opacity-80 hover:opacity-100'
+                  }`}
+                  style={{ backgroundColor: c }}
+                  aria-label={`Select accent color ${c}`}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* 4. Description */}
           <div>
             <label
               htmlFor="community-description-input"
@@ -241,13 +285,13 @@ export function CreateCommunityModal({ open, onClose, onCreated }: Props) {
             </label>
             <textarea
               id="community-description-input"
-              rows={4}
+              rows={3}
               value={description}
               onChange={(e) => {
                 setDescription(e.target.value)
                 if (errorMessage) setErrorMessage(null)
               }}
-              placeholder="Describe what your community is about"
+              placeholder="What is this community about? Who should join?"
               className="input resize-none text-sm leading-relaxed"
               maxLength={500}
               required
@@ -257,6 +301,13 @@ export function CreateCommunityModal({ open, onClose, onCreated }: Props) {
               {description.length}/500
             </div>
           </div>
+
+          {/* Creator Attribution Info */}
+          {user && (
+            <div className="rounded-xl border border-brand/20 bg-brand/5 p-3 text-xs text-ink-muted">
+              Publishing as <strong className="text-white">{user.name}</strong> ({user.role}). Your community will be publicly listed and visible to everyone.
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#334155]">
@@ -273,8 +324,17 @@ export function CreateCommunityModal({ open, onClose, onCreated }: Props) {
               disabled={submitting}
               className="btn-primary flex items-center gap-2 text-xs sm:text-sm px-5 py-2 font-bold shadow-cyber hover:shadow-neon"
             >
-              <Plus className="h-4 w-4" />
-              <span>{submitting ? 'Creating Community…' : 'Create Community'}</span>
+              {submitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Creating…</span>
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4" />
+                  <span>Create Community</span>
+                </>
+              )}
             </button>
           </div>
         </form>
@@ -282,4 +342,3 @@ export function CreateCommunityModal({ open, onClose, onCreated }: Props) {
     </div>
   )
 }
-

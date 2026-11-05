@@ -23,8 +23,13 @@ export function CommunityCard({ community }: { community: CommunityWithState }) 
               {community.name}
             </Link>
           </h3>
-          <div className="mt-1.5">
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <CategoryChip category={community.category} size="sm" />
+            {community.creatorName && (
+              <span className="text-[10px] text-brand/80 font-medium truncate max-w-[150px]">
+                by {community.creatorName}
+              </span>
+            )}
           </div>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { Plus, Search, Users } from 'lucide-react'
 import { CommunityCard } from '../components/communities/CommunityCard'
 import { CreateCommunityModal } from '../components/communities/CreateCommunityModal'
@@ -9,7 +9,7 @@ import { ErrorState } from '../components/ui/ErrorState'
 import { PageHeader } from '../components/ui/PageHeader'
 import { Skeleton } from '../components/ui/Skeleton'
 import { useAsync } from '../hooks/useAsync'
-import { getCommunities } from '../services'
+import { getCommunities, subscribeChange, isSupabaseConfigured } from '../services'
 import { CATEGORIES, type Category } from '../types'
 
 export default function CommunitiesPage() {
@@ -18,6 +18,14 @@ export default function CommunitiesPage() {
   const [category, setCategory] = useState<Category | 'all'>('all')
   const [onlyFollowing, setOnlyFollowing] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+
+  // Listen to bus changes (e.g. newly created community, follow/unfollow)
+  useEffect(() => {
+    const unsub = subscribeChange(() => {
+      reload()
+    })
+    return () => unsub()
+  }, [reload])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -46,7 +54,9 @@ export default function CommunitiesPage() {
           </button>
         }
       />
-      <DemoNote>All communities are fictional. Follows are saved only in this browser (temporary demo behavior).</DemoNote>
+      {!isSupabaseConfigured() && (
+        <DemoNote>All communities and follows are stored locally in your browser.</DemoNote>
+      )}
 
       <div className="mt-6 flex flex-col gap-4">
         <div className="relative max-w-xl">
@@ -116,6 +126,7 @@ export default function CommunitiesPage() {
       <CreateCommunityModal
         open={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
+        onCreated={() => reload()}
       />
     </div>
   )

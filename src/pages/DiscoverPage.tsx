@@ -12,6 +12,7 @@ import { ErrorState } from '../components/ui/ErrorState'
 import { EventGridSkeleton } from '../components/ui/Skeleton'
 import { DemoNote } from '../components/ui/DemoNote'
 import { useApp } from '../hooks/AppContext'
+import { useAuth } from '../hooks/AuthContext'
 import { useAsync } from '../hooks/useAsync'
 import { defaultFilters, searchEvents, searchHackathons, isSupabaseConfigured } from '../services'
 import { CATEGORIES, type Category, type EventFilters } from '../types'
@@ -38,6 +39,7 @@ const INITIAL: FilterState = {
 
 export default function DiscoverPage() {
   const { localityId, interests, toggleInterest } = useApp()
+  const { user } = useAuth()
   const [state, setState] = useState<FilterState>(INITIAL)
   const [showFilters, setShowFilters] = useState(false)
   const resultsRef = useRef<HTMLElement>(null)
@@ -92,7 +94,8 @@ export default function DiscoverPage() {
 
   return (
     <>
-      {/* Hero Section with Background Globe Video */}
+      {/* Hero Section with Background Globe Video — only shown to guests */}
+      {!user && (
       <section className="relative min-h-screen flex items-center overflow-hidden border-b border-[#1E293B] bg-[#0B0F19]">
         {/* Layer 1: Background Video */}
         <video
@@ -144,6 +147,7 @@ export default function DiscoverPage() {
           </div>
         </div>
       </section>
+      )}
 
       {/* Search, Location, and Category Filters Section (Solid Dark Background) */}
       <section className="relative border-b border-[#1E293B] bg-[#0B0F19] py-8">

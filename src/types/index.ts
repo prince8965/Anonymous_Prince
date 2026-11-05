@@ -112,6 +112,10 @@ export interface Community {
   localityId: string
   accent: string
   isDemo: boolean
+  creatorId?: string
+  creatorRole?: UserRole
+  creatorName?: string
+  createdAt?: string
 }
 
 export interface RSVP {

@@ -56,6 +56,11 @@ export default function CommunityDetailPage() {
           <p className="mt-1 max-w-2xl text-ink-muted">{c.description}</p>
           <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-ink-muted">
             <CategoryChip category={c.category} size="sm" />
+            {c.creatorName && (
+              <span className="rounded-full bg-brand/10 border border-brand/30 px-2.5 py-0.5 text-xs text-brand font-semibold">
+                Created by {c.creatorName} ({c.creatorRole || 'Member'})
+              </span>
+            )}
             <span className="flex items-center gap-1.5"><Users className="h-4 w-4 text-brand" aria-hidden />{c.members.toLocaleString('en-IN')} members</span>
             <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-brand" aria-hidden />{getLocality(c.localityId).name}</span>
           </div>

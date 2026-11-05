@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { LogOut, Menu, X } from 'lucide-react'
+import { LogOut, Menu, UserPen, X } from 'lucide-react'
 import { useAuth } from '../../hooks/AuthContext'
 import { useToast } from '../../hooks/ToastContext'
 import { NotificationBell } from '../notifications/NotificationBell'
 import { Logo } from './Logo'
+import { EditProfileModal } from '../profile/EditProfileModal'
 
 export function Navbar() {
   const [open, setOpen] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [avatarError, setAvatarError] = useState(false)
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   const { user, isOrganizer, signOut } = useAuth()
@@ -87,8 +89,7 @@ export function Navbar() {
   }, [user, isOrganizer])
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
-    `rounded-lg px-3 py-2 text-sm font-semibold transition ${
-      isActive ? 'bg-brand text-[#0B0F19] shadow-cyber' : 'text-ink-muted hover:bg-secondary hover:text-white'
+    `rounded-lg px-3 py-2 text-sm font-semibold transition ${isActive ? 'bg-brand text-[#0B0F19] shadow-cyber' : 'text-ink-muted hover:bg-secondary hover:text-white'
     }`
 
   const handleSignOut = async () => {
@@ -100,7 +101,7 @@ export function Navbar() {
   }
 
   return (
-    <header className="glass sticky top-0 z-40 border-b border-[#1E293B]/80">
+    <header className="glass sticky top-0 z-40 border-b border-white/[0.06]">
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:rounded-lg focus:bg-secondary focus:text-brand focus:px-3 focus:py-2 focus:ring-2 focus:ring-brand"
@@ -193,6 +194,20 @@ export function Navbar() {
                     {/* Subtle Divider */}
                     <div className="my-3 border-t border-[#334155]/60" />
 
+                    {/* Edit Profile Option */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDropdownOpen(false)
+                        setIsEditProfileOpen(true)
+                      }}
+                      className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-xs sm:text-sm font-semibold text-ink-muted hover:bg-white/10 hover:text-white transition-colors duration-150 cursor-pointer"
+                      role="menuitem"
+                    >
+                      <UserPen className="h-4 w-4 shrink-0 text-brand" aria-hidden />
+                      <span>Edit Profile</span>
+                    </button>
+
                     {/* Bottom: Sign Out Option */}
                     <button
                       type="button"
@@ -251,6 +266,16 @@ export function Navbar() {
                     {user.role}
                   </span>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false)
+                    setIsEditProfileOpen(true)
+                  }}
+                  className="btn-secondary w-full text-xs"
+                >
+                  <UserPen className="h-4 w-4" aria-hidden /> Edit Profile
+                </button>
                 <button type="button" onClick={handleSignOut} className="btn-secondary w-full text-xs">
                   <LogOut className="h-4 w-4" aria-hidden /> Sign out
                 </button>
@@ -268,6 +293,12 @@ export function Navbar() {
           </div>
         </div>
       )}
+
+      {/* Edit Profile Modal */}
+      <EditProfileModal
+        open={isEditProfileOpen}
+        onClose={() => setIsEditProfileOpen(false)}
+      />
     </header>
   )
 }

@@ -18,6 +18,7 @@ export interface AuthAdapter {
   signOut(): Promise<void>
   resetPassword(email: string): Promise<void>
   fetchUserProfile(userId: string): Promise<User | null>
+  updateProfile(userId: string, updates: { name?: string; email?: string; avatarUrl?: string }): Promise<User>
 }
 
 const SESSION_KEY = 'session'
@@ -107,6 +108,20 @@ export const demoAuthAdapter: AuthAdapter = {
     const session = readStore<User | null>(SESSION_KEY, null)
     if (session && session.id === userId) return session
     return null
+  },
+  async updateProfile(_userId: string, updates: { name?: string; email?: string; avatarUrl?: string }) {
+    await delay(300)
+    const session = readStore<User | null>(SESSION_KEY, null)
+    if (!session) throw new Error('Not logged in')
+    const updated: User = {
+      ...session,
+      name: updates.name?.trim() || session.name,
+      email: updates.email?.trim() || session.email,
+      avatarUrl: updates.avatarUrl !== undefined ? updates.avatarUrl : session.avatarUrl,
+    }
+    writeStore(SESSION_KEY, updated)
+    notifyChange()
+    return updated
   },
 }
 
@@ -319,6 +334,53 @@ export const supabaseAuthAdapter: AuthAdapter = {
     if (error) {
       throw new Error(error.message)
     }
+  },
+
+  async updateProfile(userId: string, updates: { name?: string; email?: string; avatarUrl?: string }) {
+    await delay(200)
+    const session = this.getSession()
+
+    // 1. Update Supabase Auth if email or name metadata changed
+    if (updates.email && updates.email !== session?.email) {
+      const { error: authErr } = await supabase.auth.updateUser({
+        email: updates.email.trim(),
+        data: updates.name ? { name: updates.name.trim() } : undefined,
+      })
+      if (authErr) throw new Error(authErr.message)
+    } else if (updates.name) {
+      await supabase.auth.updateUser({
+        data: { name: updates.name.trim() },
+      })
+    }
+
+    // 2. Update profiles table
+    const profileUpdates: Record<string, any> = {
+      updated_at: new Date().toISOString(),
+    }
+    if (updates.name) profileUpdates.full_name = updates.name.trim()
+    if (updates.avatarUrl !== undefined) profileUpdates.avatar_url = updates.avatarUrl
+
+    const { error: profileErr } = await supabase
+      .from('profiles')
+      .update(profileUpdates)
+      .eq('id', userId)
+
+    if (profileErr) {
+      console.warn('Profile update warning:', profileErr.message)
+    }
+
+    const updatedUser: User = {
+      id: userId,
+      name: updates.name?.trim() || session?.name || 'User',
+      email: updates.email?.trim() || session?.email || '',
+      role: session?.role || 'participant',
+      avatarUrl: updates.avatarUrl !== undefined ? updates.avatarUrl : session?.avatarUrl,
+      organizationId: session?.organizationId,
+    }
+
+    writeStore(SESSION_KEY, updatedUser)
+    notifyChange()
+    return updatedUser
   },
 }
 
