@@ -1,28 +1,30 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import {
   Building2,
   Filter,
   MessageSquare,
-  PlusCircle,
   Search,
   Sparkles,
+  TrendingUp,
   Users,
+  X,
 } from 'lucide-react'
+import { CommunityLeftSidebar } from '../components/community/CommunityLeftSidebar'
 import { CommunityPostCard } from '../components/community/CommunityPostCard'
-import { CommunityTabs } from '../components/community/CommunityTabs'
+import { CommunityRightSidebar } from '../components/community/CommunityRightSidebar'
+import { CreatePostCard } from '../components/community/CreatePostCard'
 import { CreatePostModal } from '../components/community/CreatePostModal'
 import { OrganizationCard } from '../components/community/OrganizationCard'
 import { OrganizationProfileModal } from '../components/community/OrganizationProfileModal'
 import { LocationSelector } from '../components/events/LocationSelector'
 import { CategoryChip } from '../components/ui/CategoryChip'
-import { DemoNote } from '../components/ui/DemoNote'
 import { EmptyState } from '../components/ui/EmptyState'
 import { ErrorState } from '../components/ui/ErrorState'
-import { PageHeader } from '../components/ui/PageHeader'
 import { Skeleton } from '../components/ui/Skeleton'
 import { getLocality } from '../data/localities'
 import { useApp } from '../hooks/AppContext'
+import { useAuth } from '../hooks/AuthContext'
 import { useAsync } from '../hooks/useAsync'
 import {
   getCommunityPosts,
@@ -30,6 +32,7 @@ import {
   getOrganizations,
   subscribeChange,
 } from '../services'
+import { readRsvps } from '../services/db'
 import {
   CATEGORIES,
   type Category,
@@ -39,14 +42,16 @@ import {
 } from '../types'
 
 export default function CommunityPage() {
+  const { id: routeOrgId } = useParams<{ id: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const { localityId, interests } = useApp()
+  const { user } = useAuth()
 
   // Query parameter handling: ?tab=..., ?postId=..., ?shareEventId=..., ?org=...
   const initialTab = (searchParams.get('tab') as CommunityTab) || 'for-you'
   const targetPostId = searchParams.get('postId')
   const shareEventId = searchParams.get('shareEventId')
-  const targetOrgId = searchParams.get('org')
+  const targetOrgId = searchParams.get('org') || routeOrgId
 
   const [activeTab, setActiveTab] = useState<CommunityTab>(initialTab)
   const [query, setQuery] = useState('')
@@ -55,7 +60,9 @@ export default function CommunityPage() {
 
   // Modals state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(Boolean(shareEventId))
+  const [createModalMode, setCreateModalMode] = useState<'default' | 'image' | 'event'>('default')
   const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null)
+  const [rsvpsVersion, setRsvpsVersion] = useState(0)
 
   const currentUserId = getCurrentUserId()
 
@@ -78,7 +85,7 @@ export default function CommunityPage() {
     [activeTab, category, query, sort, localityId, interests],
   )
 
-  // Organizations loader (for Organizations tab & lookup)
+  // Organizations loader (for Organizations tab, lookup, and sidebar suggestions)
   const {
     data: organizations,
     loading: orgsLoading,
@@ -91,11 +98,12 @@ export default function CommunityPage() {
     const unsub = subscribeChange(() => {
       reloadPosts()
       reloadOrgs()
+      setRsvpsVersion((v) => v + 1)
     })
     return unsub
   }, [reloadPosts, reloadOrgs])
 
-  // Open target organization modal if specified in query param
+  // Open target organization modal if specified in query param or route
   useEffect(() => {
     if (targetOrgId && organizations && organizations.length > 0) {
       const match = organizations.find((o) => o.id === targetOrgId)
@@ -107,7 +115,11 @@ export default function CommunityPage() {
   useEffect(() => {
     if (selectedOrg && organizations) {
       const match = organizations.find((o) => o.id === selectedOrg.id)
-      if (match && (match.isFollowing !== selectedOrg.isFollowing || match.followerCount !== selectedOrg.followerCount)) {
+      if (
+        match &&
+        (match.isFollowing !== selectedOrg.isFollowing ||
+          match.followerCount !== selectedOrg.followerCount)
+      ) {
         setSelectedOrg(match)
       }
     }
@@ -117,6 +129,7 @@ export default function CommunityPage() {
   useEffect(() => {
     if (shareEventId) {
       setIsCreateModalOpen(true)
+      setCreateModalMode('event')
     }
   }, [shareEventId])
 
@@ -132,9 +145,28 @@ export default function CommunityPage() {
     }
   }, [targetPostId, posts])
 
+  // Real user activity stats
   const myPostsCount = useMemo(() => {
     return (posts ?? []).filter((p) => p.authorId === currentUserId).length
   }, [posts, currentUserId])
+
+  const followedOrgsCount = useMemo(() => {
+    return (organizations ?? []).filter((o) => o.isFollowing).length
+  }, [organizations])
+
+  const totalInteractions = useMemo(() => {
+    return (posts ?? [])
+      .filter((p) => p.authorId === currentUserId)
+      .reduce((sum, p) => sum + p.likesCount + p.commentsCount, 0)
+  }, [posts, currentUserId])
+
+  const rsvpsCount = useMemo(() => {
+    // Read user's real RSVPs count
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    rsvpsVersion // recompute when version changes
+    const rsvps = readRsvps()
+    return rsvps.filter((r) => r.status === 'going').length
+  }, [rsvpsVersion])
 
   const handleTabChange = (tab: CommunityTab) => {
     setActiveTab(tab)
@@ -146,6 +178,35 @@ export default function CommunityPage() {
   const handleOpenOrgProfile = (orgId: string) => {
     const match = (organizations ?? []).find((o) => o.id === orgId)
     if (match) setSelectedOrg(match)
+  }
+
+  const handleOpenCreate = (mode: 'default' | 'image' | 'event' = 'default') => {
+    setCreateModalMode(mode)
+    setIsCreateModalOpen(true)
+  }
+
+  const handleSelectTopic = (topicQuery: string) => {
+    setQuery(topicQuery)
+    if (activeTab === 'organizations') {
+      setActiveTab('for-you')
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const handleSelectPost = (postId: string) => {
+    if (activeTab === 'organizations') {
+      setActiveTab('for-you')
+    }
+    setTimeout(() => {
+      const el = document.getElementById(`post-${postId}`)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        el.classList.add('ring-2', 'ring-brand', 'shadow-cyber')
+        setTimeout(() => {
+          el.classList.remove('ring-2', 'ring-brand', 'shadow-cyber')
+        }, 3000)
+      }
+    }, 150)
   }
 
   // Filter organizations when in the Organizations tab
@@ -165,339 +226,392 @@ export default function CommunityPage() {
   const currentLocality = getLocality(localityId)
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      {/* Page Header with Prominent Create Post Button */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <PageHeader
-          title="Community Hub"
-          subtitle="Connect with students, event organizers, and campus clubs near you."
-        />
-
-        <div className="shrink-0">
-          <button
-            type="button"
-            onClick={() => setIsCreateModalOpen(true)}
-            className="btn-primary flex w-full items-center justify-center gap-2 px-5 py-2.5 text-sm font-bold shadow-cyber hover:shadow-neon sm:w-auto"
-            aria-label="Create a new community post"
-          >
-            <PlusCircle className="h-4 w-4" />
-            <span>Create Post</span>
-          </button>
-        </div>
-      </div>
-
-      <DemoNote>
-        Interactive NearCircle Community prototype. Posts, likes, comments, and organization follows persist in your browser.
-      </DemoNote>
-
-      {/* Tabs navigation */}
-      <div className="mt-6">
-        <CommunityTabs
-          activeTab={activeTab}
-          onChangeTab={handleTabChange}
-          myPostsCount={myPostsCount}
-          localityName={currentLocality.name}
-        />
-      </div>
-
-      {/* Search, Category filters, and Sort bar */}
-      <div className="mt-6 flex flex-col gap-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          {/* Search Bar */}
-          <div className="relative flex-1 max-w-xl">
-            <label htmlFor="community-search-input" className="sr-only">
-              Search community
-            </label>
-            <Search
-              className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-brand"
-              aria-hidden
-            />
-            <input
-              id="community-search-input"
-              type="search"
-              className="input h-11 pl-10 text-sm"
-              placeholder={
-                activeTab === 'organizations'
-                  ? 'Search campus organizations, student clubs, or categories…'
-                  : 'Search posts, student discussions, creators, or topics…'
-              }
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
-
-          {/* Sort Dropdown & Locality selector */}
-          <div className="flex items-center gap-3 self-end sm:self-auto flex-wrap">
-            {activeTab === 'nearby' && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-ink-muted">Area:</span>
-                <LocationSelector />
+    <div className="min-h-screen bg-canvas text-ink py-6">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        {/* Mobile-Only Header Snippet */}
+        <div className="mb-4 lg:hidden">
+          <div className="card p-4 flex items-center justify-between gap-3 shadow-card">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="relative h-11 w-11 rounded-full border border-brand/40 overflow-hidden bg-[#0F172A] shrink-0">
+                {user?.avatarUrl ? (
+                  <img
+                    src={user.avatarUrl}
+                    alt={user.name}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-gradient-to-tr from-brand/20 to-brand-purple/20 text-brand font-bold text-sm">
+                    {(user?.name || 'S').charAt(0).toUpperCase()}
+                  </div>
+                )}
               </div>
-            )}
-
-            {activeTab !== 'organizations' && (
-              <div className="flex items-center gap-2">
-                <Filter className="h-4 w-4 text-ink-faint" />
-                <label htmlFor="community-sort" className="sr-only">
-                  Sort posts
-                </label>
-                <select
-                  id="community-sort"
-                  value={sort}
-                  onChange={(e) => setSort(e.target.value as PostSortKey)}
-                  className="input h-11 py-1 text-xs font-semibold"
-                >
-                  <option value="newest" className="bg-secondary text-white">
-                    Newest First
-                  </option>
-                  <option value="popular" className="bg-secondary text-white">
-                    Most Popular (Likes &amp; Comments)
-                  </option>
-                </select>
+              <div className="min-w-0">
+                <h2 className="text-sm font-bold text-white truncate">
+                  {user?.name || 'NearCircle Student'}
+                </h2>
+                <div className="flex items-center gap-2 text-[11px] text-ink-muted">
+                  <span>{myPostsCount} posts</span>
+                  <span>•</span>
+                  <span>{followedOrgsCount} followed</span>
+                </div>
               </div>
-            )}
-          </div>
-        </div>
-
-        {/* Category Filter Chips */}
-        <div
-          className="flex flex-wrap items-center gap-2"
-          role="group"
-          aria-label="Filter community by category"
-        >
-          <CategoryChip
-            category="all"
-            selected={category === 'all'}
-            onClick={() => setCategory('all')}
-          />
-          {CATEGORIES.map((cat) => (
-            <CategoryChip
-              key={cat}
-              category={cat}
-              selected={category === cat}
-              onClick={() => setCategory(category === cat ? 'all' : cat)}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* Main Content Area */}
-      <div className="mt-8">
-        {/* Organizations Tab View */}
-        {activeTab === 'organizations' ? (
-          <div>
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <Building2 className="h-5 w-5 text-brand" />
-                <span>Campus Organizations &amp; Clubs</span>
-              </h2>
-              <span className="text-xs text-ink-muted">
-                {filteredOrganizations.length} {filteredOrganizations.length === 1 ? 'organization' : 'organizations'}
-              </span>
             </div>
 
-            {orgsLoading ? (
-              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <Skeleton key={i} className="h-48 w-full" />
-                ))}
+            <button
+              type="button"
+              onClick={() => handleOpenCreate('default')}
+              className="btn-primary shrink-0 text-xs px-3.5 py-2 font-bold shadow-cyber"
+            >
+              Post
+            </button>
+          </div>
+
+          {/* Mobile Horizontal Tabs */}
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+            {(
+              [
+                { id: 'for-you', label: 'For You' },
+                { id: 'following', label: 'Following' },
+                { id: 'nearby', label: 'Nearby' },
+                { id: 'my-posts', label: 'My Posts' },
+                { id: 'organizations', label: 'Clubs & Orgs' },
+              ] as const
+            ).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => handleTabChange(t.id)}
+                className={`shrink-0 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition ${
+                  activeTab === t.id
+                    ? 'bg-brand/15 text-brand border border-brand/40'
+                    : 'bg-secondary text-ink-muted hover:text-white border border-[#334155]/60'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Three-Column LinkedIn Layout on Desktop */}
+        <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr_310px] xl:grid-cols-[280px_1fr_330px] gap-6 items-start">
+          {/* LEFT SIDEBAR (Desktop) */}
+          <aside className="hidden lg:block sticky top-20" aria-label="Community Profile and Navigation">
+            <CommunityLeftSidebar
+              user={user}
+              activeTab={activeTab}
+              onChangeTab={handleTabChange}
+              myPostsCount={myPostsCount}
+              followedOrgsCount={followedOrgsCount}
+              totalInteractions={totalInteractions}
+              rsvpsCount={rsvpsCount}
+              localityName={currentLocality.name}
+              onOpenCreatePost={() => handleOpenCreate('default')}
+            />
+          </aside>
+
+          {/* CENTER FEED */}
+          <main className="min-w-0 space-y-4" aria-label="Community Feed">
+            {/* LinkedIn-style Create Post Card */}
+            <CreatePostCard
+              user={user}
+              onOpenCreate={handleOpenCreate}
+            />
+
+            {/* Filter & Search Bar */}
+            <div className="card p-3 sm:p-4 space-y-3 shadow-card">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                {/* Search Bar */}
+                <div className="relative flex-1">
+                  <label htmlFor="community-search-feed" className="sr-only">
+                    Search community posts, topics, or clubs
+                  </label>
+                  <Search
+                    className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-brand"
+                    aria-hidden
+                  />
+                  <input
+                    id="community-search-feed"
+                    type="search"
+                    className="input h-10 pl-10 text-xs sm:text-sm"
+                    placeholder={
+                      activeTab === 'organizations'
+                        ? 'Search campus clubs, student societies, or tags…'
+                        : 'Search posts, discussions, questions, or topics…'
+                    }
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                  />
+                  {query && (
+                    <button
+                      type="button"
+                      onClick={() => setQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-faint hover:text-white"
+                      aria-label="Clear search"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Sort selector & Area selector */}
+                <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-auto">
+                  {activeTab === 'nearby' && (
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <span className="font-semibold text-ink-muted">Area:</span>
+                      <LocationSelector />
+                    </div>
+                  )}
+
+                  {activeTab !== 'organizations' && (
+                    <div className="flex items-center gap-1.5">
+                      <Filter className="h-3.5 w-3.5 text-ink-faint" />
+                      <label htmlFor="sort-select" className="sr-only">
+                        Sort posts
+                      </label>
+                      <select
+                        id="sort-select"
+                        value={sort}
+                        onChange={(e) => setSort(e.target.value as PostSortKey)}
+                        className="input h-10 py-1 text-xs font-semibold max-w-[150px]"
+                      >
+                        <option value="newest" className="bg-secondary text-white">
+                          Sort: Newest
+                        </option>
+                        <option value="popular" className="bg-secondary text-white">
+                          Sort: Top / Popular
+                        </option>
+                      </select>
+                    </div>
+                  )}
+                </div>
               </div>
-            ) : orgsError ? (
-              <ErrorState message={orgsError} onRetry={reloadOrgs} />
-            ) : filteredOrganizations.length === 0 ? (
-              <EmptyState
-                icon={Building2}
-                title="No organizations found"
-                description="Try another search query or category filter."
-                actionLabel="Reset filters"
-                onAction={() => {
-                  setQuery('')
-                  setCategory('all')
-                }}
-              />
-            ) : (
-              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                {filteredOrganizations.map((org) => (
-                  <OrganizationCard
-                    key={org.id}
-                    organization={org}
-                    onSelect={(o) => setSelectedOrg(o)}
-                    onFollowToggled={() => {
-                      reloadOrgs()
-                      reloadPosts()
-                    }}
+
+              {/* Category Chips Scrollbar */}
+              <div
+                className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none"
+                role="group"
+                aria-label="Filter feed by category"
+              >
+                <CategoryChip
+                  category="all"
+                  selected={category === 'all'}
+                  onClick={() => setCategory('all')}
+                  size="sm"
+                />
+                {CATEGORIES.map((cat) => (
+                  <CategoryChip
+                    key={cat}
+                    category={cat}
+                    selected={category === cat}
+                    onClick={() => setCategory(category === cat ? 'all' : cat)}
+                    size="sm"
                   />
                 ))}
               </div>
-            )}
-          </div>
-        ) : (
-          /* Feed Posts View (For You, Following, Nearby, My Posts) */
-          <div className="grid gap-8 lg:grid-cols-[1fr_340px]">
-            {/* Feed Column */}
-            <div className="space-y-6">
-              {/* Active Tab Notice Banner */}
-              {activeTab === 'following' && (
-                <div className="rounded-xl border border-brand/20 bg-brand/5 p-4 text-xs leading-relaxed text-ink-muted flex items-start gap-3">
-                  <Users className="h-5 w-5 text-brand shrink-0 mt-0.5" />
-                  <div>
-                    <strong className="text-white">Following Feed:</strong> Showing updates from organizations, clubs, and creators you follow. Follow more clubs in the Organizations tab!
-                  </div>
-                </div>
-              )}
-
-              {activeTab === 'nearby' && (
-                <div className="rounded-xl border border-brand/20 bg-brand/5 p-4 text-xs leading-relaxed text-ink-muted flex items-start gap-3">
-                  <Sparkles className="h-5 w-5 text-brand shrink-0 mt-0.5" />
-                  <div>
-                    <strong className="text-white">Nearby Feed for {currentLocality.name}:</strong> Showing student questions, event announcements, and meetups in your selected locality.
-                  </div>
-                </div>
-              )}
-
-              {/* Feed List */}
-              {postsLoading ? (
-                <div className="space-y-4">
-                  {Array.from({ length: 3 }).map((_, i) => (
-                    <Skeleton key={i} className="h-64 w-full" />
-                  ))}
-                </div>
-              ) : postsError ? (
-                <ErrorState message={postsError} onRetry={reloadPosts} />
-              ) : !posts || posts.length === 0 ? (
-                <EmptyState
-                  icon={MessageSquare}
-                  title={
-                    activeTab === 'my-posts'
-                      ? 'You haven’t posted yet'
-                      : activeTab === 'following'
-                      ? 'No posts from followed clubs'
-                      : activeTab === 'nearby'
-                      ? `No posts found in ${currentLocality.name}`
-                      : 'No community posts found'
-                  }
-                  description={
-                    activeTab === 'my-posts'
-                      ? 'Share your thoughts, ask a question, or announce an event to get started.'
-                      : activeTab === 'following'
-                      ? 'Follow campus organizations and communities to see their latest posts here.'
-                      : 'Try broadening your search or change the category filter.'
-                  }
-                  actionLabel={
-                    activeTab === 'my-posts'
-                      ? 'Create First Post'
-                      : activeTab === 'following'
-                      ? 'Explore Organizations'
-                      : 'Reset Filters'
-                  }
-                  onAction={() => {
-                    if (activeTab === 'my-posts') {
-                      setIsCreateModalOpen(true)
-                    } else if (activeTab === 'following') {
-                      handleTabChange('organizations')
-                    } else {
-                      setQuery('')
-                      setCategory('all')
-                    }
-                  }}
-                />
-              ) : (
-                <div className="space-y-6">
-                  {posts.map((post) => (
-                    <CommunityPostCard
-                      key={post.id}
-                      post={post}
-                      onPostUpdated={() => {
-                        reloadPosts()
-                        reloadOrgs()
-                      }}
-                      onOpenOrgProfile={handleOpenOrgProfile}
-                      isHighlighted={post.id === targetPostId}
-                    />
-                  ))}
-                </div>
-              )}
             </div>
 
-            {/* Sidebar Column: Suggested Clubs, Quick Actions, Community Guidelines */}
-            <aside className="space-y-6 hidden lg:block" aria-label="Community Sidebar">
-              {/* Quick Create Prompt Card */}
-              <div className="card p-5 space-y-3 bg-gradient-to-br from-secondary to-[#0F172A] border-brand/30">
-                <div className="flex items-center gap-2 text-white">
-                  <Sparkles className="h-5 w-5 text-brand" />
-                  <h3 className="font-bold text-sm">Got something to share?</h3>
+            {/* Active Tab Notice Banner (for Following / Nearby) */}
+            {activeTab === 'following' && (
+              <div className="rounded-xl border border-brand/20 bg-brand/5 p-3.5 text-xs text-ink-muted flex items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Users className="h-4 w-4 text-brand shrink-0" />
+                  <span className="truncate">
+                    Showing posts from <strong>{followedOrgsCount} followed clubs</strong> &amp; your network.
+                  </span>
                 </div>
-                <p className="text-xs text-ink-muted leading-relaxed">
-                  Post project questions, announce upcoming club events, or find hackathon teammates across campus.
-                </p>
                 <button
                   type="button"
-                  onClick={() => setIsCreateModalOpen(true)}
-                  className="btn-primary w-full text-xs font-bold py-2 shadow-cyber"
+                  onClick={() => handleTabChange('organizations')}
+                  className="text-xs font-bold text-brand hover:underline shrink-0"
                 >
-                  Create Community Post
+                  Explore Clubs →
                 </button>
               </div>
+            )}
 
-              {/* Verified Campus Organizations Widget */}
-              <div className="card p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-ink-faint">
-                    Featured Campus Clubs
+            {activeTab === 'nearby' && (
+              <div className="rounded-xl border border-brand/20 bg-brand/5 p-3.5 text-xs text-ink-muted flex items-center justify-between gap-3 shadow-xs">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Sparkles className="h-4 w-4 text-brand shrink-0" />
+                  <span className="truncate">
+                    Showing posts from students &amp; organizers near <strong>{currentLocality.name}</strong>.
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Content Feed: Organizations View OR Posts View */}
+            {activeTab === 'organizations' ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between px-1">
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-brand" />
+                    <span>Campus Clubs &amp; Student Societies</span>
                   </h3>
-                  <button
-                    type="button"
-                    onClick={() => handleTabChange('organizations')}
-                    className="text-xs font-semibold text-brand hover:underline"
-                  >
-                    View All →
-                  </button>
+                  <span className="text-xs text-ink-muted">
+                    {filteredOrganizations.length}{' '}
+                    {filteredOrganizations.length === 1 ? 'organization' : 'organizations'}
+                  </span>
                 </div>
 
-                <div className="space-y-3">
-                  {(organizations ?? []).slice(0, 4).map((org) => (
-                    <div
-                      key={org.id}
-                      onClick={() => setSelectedOrg(org)}
-                      className="group flex cursor-pointer items-center justify-between gap-3 rounded-xl p-2 transition hover:bg-[#0F172A]"
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div
-                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[#0B0F19] text-xs font-bold shadow-sm"
-                          style={{ backgroundColor: org.accentColor }}
-                        >
-                          {org.name.charAt(0)}
+                {orgsLoading ? (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <Skeleton key={i} className="h-44 w-full rounded-2xl" />
+                    ))}
+                  </div>
+                ) : orgsError ? (
+                  <ErrorState message={orgsError} onRetry={reloadOrgs} />
+                ) : filteredOrganizations.length === 0 ? (
+                  <EmptyState
+                    icon={Building2}
+                    title="No organizations found"
+                    description="Try another search query or category filter."
+                    actionLabel="Reset filters"
+                    onAction={() => {
+                      setQuery('')
+                      setCategory('all')
+                    }}
+                  />
+                ) : (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {filteredOrganizations.map((org) => (
+                      <OrganizationCard
+                        key={org.id}
+                        organization={org}
+                        onSelect={(o) => setSelectedOrg(o)}
+                        onFollowToggled={() => {
+                          reloadOrgs()
+                          reloadPosts()
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Chronological Feed Posts */
+              <div className="space-y-4">
+                {postsLoading ? (
+                  <div className="space-y-4">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <div key={i} className="card p-5 space-y-3">
+                        <div className="flex items-center gap-3">
+                          <Skeleton className="h-11 w-11 rounded-full" />
+                          <div className="space-y-1.5 flex-1">
+                            <Skeleton className="h-4 w-36" />
+                            <Skeleton className="h-3 w-24" />
+                          </div>
                         </div>
-                        <div className="min-w-0">
-                          <p className="truncate text-xs font-semibold text-white group-hover:text-brand">
-                            {org.name}
-                          </p>
-                          <p className="text-[11px] text-ink-muted">
-                            {org.followerCount.toLocaleString('en-IN')} followers
-                          </p>
-                        </div>
+                        <Skeleton className="h-16 w-full rounded-xl" />
+                        <Skeleton className="h-8 w-full rounded-xl" />
                       </div>
-                      <span className="text-[11px] font-semibold text-brand opacity-0 group-hover:opacity-100 transition">
-                        View
-                      </span>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : postsError ? (
+                  <ErrorState message={postsError} onRetry={reloadPosts} />
+                ) : !posts || posts.length === 0 ? (
+                  <EmptyState
+                    icon={MessageSquare}
+                    title={
+                      activeTab === 'my-posts'
+                        ? 'You haven’t posted yet'
+                        : activeTab === 'following'
+                        ? 'No posts from followed clubs yet'
+                        : activeTab === 'nearby'
+                        ? `No community posts in ${currentLocality.name}`
+                        : 'No community posts found'
+                    }
+                    description={
+                      activeTab === 'my-posts'
+                        ? 'Share your thoughts, showcase a project, or ask a question to get started.'
+                        : activeTab === 'following'
+                        ? 'Follow campus organizations and student societies to see their latest updates here.'
+                        : 'Try searching with different keywords or reset your category filter.'
+                    }
+                    actionLabel={
+                      activeTab === 'my-posts'
+                        ? 'Create First Post'
+                        : activeTab === 'following'
+                        ? 'Explore Organizations'
+                        : 'Reset Filters'
+                    }
+                    onAction={() => {
+                      if (activeTab === 'my-posts') {
+                        handleOpenCreate('default')
+                      } else if (activeTab === 'following') {
+                        handleTabChange('organizations')
+                      } else {
+                        setQuery('')
+                        setCategory('all')
+                      }
+                    }}
+                  />
+                ) : (
+                  <div className="space-y-4">
+                    {posts.map((post) => (
+                      <CommunityPostCard
+                        key={post.id}
+                        post={post}
+                        onPostUpdated={() => {
+                          reloadPosts()
+                          reloadOrgs()
+                        }}
+                        onOpenOrgProfile={handleOpenOrgProfile}
+                        isHighlighted={post.id === targetPostId}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
+            )}
+          </main>
 
-              {/* Guidelines Card */}
-              <div className="card p-5 space-y-2 border-[#334155]/60 text-xs text-ink-muted">
-                <h3 className="font-semibold text-white">Campus Community Guidelines</h3>
-                <ul className="space-y-1.5 list-disc list-inside text-[11px] leading-relaxed">
-                  <li>Be respectful and welcoming to all students.</li>
-                  <li>No spam, academic dishonesty, or hate speech.</li>
-                  <li>Keep event dates and locations accurate.</li>
-                  <li>Report any suspicious or harmful content.</li>
-                </ul>
-              </div>
-            </aside>
+          {/* RIGHT SIDEBAR (Desktop) */}
+          <aside className="hidden lg:block sticky top-20" aria-label="Trending Topics and Suggested Clubs">
+            <CommunityRightSidebar
+              organizations={organizations ?? []}
+              posts={posts ?? []}
+              onSelectOrg={(org) => setSelectedOrg(org)}
+              onFollowToggled={() => {
+                reloadOrgs()
+                reloadPosts()
+              }}
+              onSelectTopic={handleSelectTopic}
+              onSelectPost={handleSelectPost}
+              onViewAllOrgs={() => handleTabChange('organizations')}
+            />
+          </aside>
+        </div>
+
+        {/* Mobile-Only Collapsible Trending & Suggested Section at bottom */}
+        <div className="mt-8 space-y-4 lg:hidden">
+          <div className="border-t border-[#334155]/60 pt-6">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-ink-faint mb-3 flex items-center gap-1.5">
+              <TrendingUp className="h-4 w-4 text-brand" />
+              <span>Campus Buzz &amp; Trending Topics</span>
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { tag: '#AIHackathon2026', query: 'AI' },
+                { tag: '#WebDevelopment', query: 'Web Development' },
+                { tag: '#CampusMeetups', query: 'meetup' },
+                { tag: '#OpenSource', query: 'open source' },
+                { tag: '#StudentStartups', query: 'startup' },
+              ].map((t) => (
+                <button
+                  key={t.tag}
+                  type="button"
+                  onClick={() => handleSelectTopic(t.query)}
+                  className="rounded-full bg-[#1E293B] border border-[#334155] px-3 py-1 text-xs font-semibold text-white hover:text-brand hover:border-brand/40 transition"
+                >
+                  {t.tag}
+                </button>
+              ))}
+            </div>
           </div>
-        )}
+        </div>
       </div>
 
       {/* Create Post Modal */}
@@ -517,6 +631,7 @@ export default function CommunityPage() {
           reloadOrgs()
         }}
         initialEventId={shareEventId ?? undefined}
+        initialMode={createModalMode}
       />
 
       {/* Organization Profile Modal */}

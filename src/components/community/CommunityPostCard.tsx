@@ -13,6 +13,7 @@ import {
   MoreVertical,
   Send,
   Share2,
+  ThumbsUp,
   Ticket,
   Trash2,
   X,
@@ -22,6 +23,7 @@ import { ConfirmationModal } from '../ui/ConfirmationModal'
 import { getLocality } from '../../data/localities'
 import { useToast } from '../../hooks/ToastContext'
 import {
+  authAdapter,
   createPostComment,
   deletePost,
   deletePostComment,
@@ -49,6 +51,7 @@ export function CommunityPostCard({
 }: Props) {
   const { notify } = useToast()
   const currentUserId = getCurrentUserId()
+  const currentSession = authAdapter.getSession()
   const isAuthor = post.authorId === currentUserId
 
   // Local state for instant interactive feedback
@@ -61,6 +64,7 @@ export function CommunityPostCard({
   const [commentInput, setCommentInput] = useState('')
   const [replyingTo, setReplyingTo] = useState<{ id: string; authorName: string } | null>(null)
   const [submittingComment, setSubmittingComment] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(false)
 
   // Modals & Menu
   const [showMenu, setShowMenu] = useState(false)
@@ -372,10 +376,34 @@ export function CommunityPostCard({
           </div>
         </header>
 
-        {/* Text Content */}
-        <p className="whitespace-pre-line text-sm leading-relaxed text-white">
-          {post.content}
-        </p>
+        {/* Text Content with LinkedIn-style Truncation */}
+        <div className="text-sm leading-relaxed text-white">
+          {post.content.length > 280 && !isExpanded ? (
+            <p className="whitespace-pre-line">
+              {post.content.slice(0, 260)}…{' '}
+              <button
+                type="button"
+                onClick={() => setIsExpanded(true)}
+                className="text-brand font-semibold hover:underline ml-1"
+              >
+                …see more
+              </button>
+            </p>
+          ) : (
+            <div>
+              <p className="whitespace-pre-line">{post.content}</p>
+              {post.content.length > 280 && (
+                <button
+                  type="button"
+                  onClick={() => setIsExpanded(false)}
+                  className="mt-1 text-xs text-ink-muted hover:text-brand transition"
+                >
+                  see less
+                </button>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Image / Poster upload preview */}
         {post.imageUrl && (
@@ -383,7 +411,7 @@ export function CommunityPostCard({
             <img
               src={post.imageUrl}
               alt="Community post attachment"
-              className="max-h-96 w-full object-contain bg-[#070A12]"
+              className="max-h-[460px] w-full object-contain bg-[#070A12]"
               loading="lazy"
             />
           </div>
@@ -453,53 +481,78 @@ export function CommunityPostCard({
           </div>
         )}
 
-        {/* Interactive Action Bar (Like, Comment, Share) */}
-        <div className="flex items-center justify-between border-t border-[#334155]/60 pt-3">
-          <div className="flex items-center gap-2 sm:gap-4">
-            {/* Like button */}
-            <button
-              type="button"
-              onClick={handleToggleLike}
-              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition active:scale-95 ${
-                liked
-                  ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30'
-                  : 'text-ink-muted hover:bg-secondary hover:text-white'
-              }`}
-              aria-label={liked ? 'Unlike post' : 'Like post'}
-            >
-              <Heart
-                className={`h-4 w-4 transition-transform ${
-                  liked ? 'fill-rose-400 text-rose-400 scale-110' : ''
-                }`}
-              />
-              <span>{likesCount}</span>
-            </button>
+        {/* Social Engagement Stats Row (LinkedIn style) */}
+        <div className="flex items-center justify-between text-xs text-ink-muted border-t border-[#334155]/50 pt-2.5 px-1">
+          <div className="flex items-center gap-1.5">
+            <span className="flex -space-x-1 items-center">
+              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-rose-500/20 text-rose-400">
+                <Heart className="h-2.5 w-2.5 fill-rose-400" />
+              </span>
+              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-brand/20 text-brand">
+                <ThumbsUp className="h-2.5 w-2.5 fill-brand" />
+              </span>
+            </span>
+            <span className="hover:text-white transition cursor-default">
+              {likesCount} {likesCount === 1 ? 'like' : 'likes'}
+            </span>
+          </div>
 
-            {/* Comment button */}
+          <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => setShowComments((prev) => !prev)}
-              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${
-                showComments
-                  ? 'bg-brand/10 text-brand border border-brand/30'
-                  : 'text-ink-muted hover:bg-secondary hover:text-white'
-              }`}
-              aria-label="View comments"
+              className="hover:text-brand hover:underline transition"
             >
-              <MessageSquare className="h-4 w-4" />
-              <span>{commentsCount}</span>
+              {commentsCount} {commentsCount === 1 ? 'comment' : 'comments'}
             </button>
           </div>
+        </div>
+
+        {/* LinkedIn-style Action Buttons Bar */}
+        <div className="grid grid-cols-3 gap-1 border-t border-[#334155]/60 pt-1">
+          {/* Like button */}
+          <button
+            type="button"
+            onClick={handleToggleLike}
+            className={`flex items-center justify-center gap-2 rounded-xl py-2 px-3 text-xs sm:text-sm font-semibold transition active:scale-95 ${
+              liked
+                ? 'text-rose-400 bg-rose-500/10 font-bold'
+                : 'text-ink-muted hover:bg-[#0F172A] hover:text-white'
+            }`}
+            aria-label={liked ? 'Unlike post' : 'Like post'}
+          >
+            <Heart
+              className={`h-4 w-4 transition-transform ${
+                liked ? 'fill-rose-400 text-rose-400 scale-110' : ''
+              }`}
+            />
+            <span>Like</span>
+          </button>
+
+          {/* Comment button */}
+          <button
+            type="button"
+            onClick={() => setShowComments((prev) => !prev)}
+            className={`flex items-center justify-center gap-2 rounded-xl py-2 px-3 text-xs sm:text-sm font-semibold transition ${
+              showComments
+                ? 'text-brand bg-brand/10 font-bold'
+                : 'text-ink-muted hover:bg-[#0F172A] hover:text-white'
+            }`}
+            aria-label="View comments"
+          >
+            <MessageSquare className="h-4 w-4" />
+            <span>Comment</span>
+          </button>
 
           {/* Share button */}
           <button
             type="button"
             onClick={handleShare}
-            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-ink-muted hover:bg-secondary hover:text-white transition"
+            className="flex items-center justify-center gap-2 rounded-xl py-2 px-3 text-xs sm:text-sm font-semibold text-ink-muted hover:bg-[#0F172A] hover:text-white transition"
             aria-label="Share post"
           >
             <Share2 className="h-4 w-4" />
-            <span className="hidden sm:inline">Share</span>
+            <span>Share</span>
           </button>
         </div>
       </div>
@@ -602,13 +655,24 @@ export function CommunityPostCard({
               </div>
             )}
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5">
+              {currentSession?.avatarUrl ? (
+                <img
+                  src={currentSession.avatarUrl}
+                  alt={currentSession.name}
+                  className="h-8 w-8 rounded-full object-cover border border-[#334155] shrink-0"
+                />
+              ) : (
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand/20 text-brand font-bold text-xs border border-brand/30">
+                  {(currentSession?.name || 'U').charAt(0).toUpperCase()}
+                </div>
+              )}
               <input
                 type="text"
                 value={commentInput}
                 onChange={(e) => setCommentInput(e.target.value)}
-                placeholder="Write a comment or reply to this post…"
-                className="input text-xs py-2 h-10"
+                placeholder="Add a comment or reply to this post…"
+                className="input text-xs py-2 h-10 flex-1"
                 maxLength={400}
               />
               <button

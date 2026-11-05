@@ -23,9 +23,10 @@ interface Props {
   onClose: () => void
   onCreated: () => void
   initialEventId?: string
+  initialMode?: 'default' | 'image' | 'event'
 }
 
-export function CreatePostModal({ open, onClose, onCreated, initialEventId }: Props) {
+export function CreatePostModal({ open, onClose, onCreated, initialEventId, initialMode }: Props) {
   const { localityId: appLocalityId } = useApp()
   const { notify } = useToast()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -39,11 +40,12 @@ export function CreatePostModal({ open, onClose, onCreated, initialEventId }: Pr
   // Media
   const [imageUrl, setImageUrl] = useState<string | undefined>()
   const [imageError, setImageError] = useState<string | null>()
+  const [isDragging, setIsDragging] = useState(false)
 
   // Event attachment
   const [availableEvents, setAvailableEvents] = useState<Event[]>([])
   const [selectedEventId, setSelectedEventId] = useState<string>(initialEventId ?? '')
-  const [isEventPost, setIsEventPost] = useState(Boolean(initialEventId))
+  const [isEventPost, setIsEventPost] = useState(Boolean(initialEventId || initialMode === 'event'))
 
   // Manual event details
   const [customEventDate, setCustomEventDate] = useState('')
@@ -52,6 +54,19 @@ export function CreatePostModal({ open, onClose, onCreated, initialEventId }: Pr
 
   const [submitting, setSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+  // React to initialMode when modal opens
+  useEffect(() => {
+    if (!open) return
+    if (initialMode === 'event') {
+      setIsEventPost(true)
+    } else if (initialMode === 'image') {
+      const timer = setTimeout(() => {
+        fileInputRef.current?.click()
+      }, 150)
+      return () => clearTimeout(timer)
+    }
+  }, [open, initialMode])
 
   // Fetch available events for attachment
   useEffect(() => {
@@ -311,11 +326,26 @@ export function CreatePostModal({ open, onClose, onCreated, initialEventId }: Pr
             ) : (
               <div
                 onClick={() => fileInputRef.current?.click()}
-                className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-[#334155] bg-[#0F172A]/50 p-6 text-center transition hover:border-brand/60 hover:bg-[#0F172A]"
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  setIsDragging(true)
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  setIsDragging(false)
+                  const file = e.dataTransfer.files?.[0]
+                  if (file) void handleImageFile(file)
+                }}
+                className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-6 text-center transition ${
+                  isDragging
+                    ? 'border-brand bg-brand/10'
+                    : 'border-[#334155] bg-[#0F172A]/50 hover:border-brand/60 hover:bg-[#0F172A]'
+                }`}
               >
                 <ImagePlus className="h-8 w-8 text-brand" />
                 <p className="mt-2 text-xs font-semibold text-white">
-                  Click to upload image or event poster
+                  Click or drag image / poster here to upload
                 </p>
                 <p className="text-[11px] text-ink-muted">PNG, JPG or WebP up to 8 MB (downscaled automatically)</p>
               </div>
