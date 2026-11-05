@@ -1,23 +1,31 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { LogOut, Menu, UserPen, X } from 'lucide-react'
+import { ArrowLeft, Camera, Loader2, LogOut, Menu, UserPen, X } from 'lucide-react'
 import { useAuth } from '../../hooks/AuthContext'
 import { useToast } from '../../hooks/ToastContext'
+import { uploadFile } from '../../services/storageService'
 import { NotificationBell } from '../notifications/NotificationBell'
 import { Logo } from './Logo'
-import { EditProfileModal } from '../profile/EditProfileModal'
 
 export function Navbar() {
   const [open, setOpen] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [avatarError, setAvatarError] = useState(false)
-  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false)
+  const [editMode, setEditMode] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  const { user, isOrganizer, signOut } = useAuth()
+  const { user, isOrganizer, signOut, updateProfile } = useAuth()
   const { notify } = useToast()
   const navigate = useNavigate()
   const location = useLocation()
+
+  // Inline edit form state
+  const [editName, setEditName] = useState('')
+  const [editEmail, setEditEmail] = useState('')
+  const [editAvatarPreview, setEditAvatarPreview] = useState('')
+  const [editAvatarFile, setEditAvatarFile] = useState<File | null>(null)
+  const [saving, setSaving] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Close dropdown on outside click or Escape key
   useEffect(() => {
@@ -26,12 +34,17 @@ export function Navbar() {
     const handlePointerDown = (e: MouseEvent | TouchEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setDropdownOpen(false)
+        setEditMode(false)
       }
     }
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setDropdownOpen(false)
+        if (editMode) {
+          setEditMode(false)
+        } else {
+          setDropdownOpen(false)
+        }
       }
     }
 
@@ -49,6 +62,7 @@ export function Navbar() {
   // Close dropdown on navigation
   useEffect(() => {
     setDropdownOpen(false)
+    setEditMode(false)
   }, [location.pathname])
 
   // Reset avatar error when user changes
@@ -94,10 +108,75 @@ export function Navbar() {
 
   const handleSignOut = async () => {
     setDropdownOpen(false)
+    setEditMode(false)
     setOpen(false)
     await signOut()
     notify('Signed out successfully.', 'info')
     navigate('/login')
+  }
+
+  const openEditMode = () => {
+    setEditName(user?.name ?? '')
+    setEditEmail(user?.email ?? '')
+    setEditAvatarPreview(user?.avatarUrl ?? '')
+    setEditAvatarFile(null)
+    setEditMode(true)
+  }
+
+  const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      notify('Please select a valid image file (PNG, JPG, WebP).', 'error')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      notify('Image size must be less than 5 MB.', 'error')
+      return
+    }
+    setEditAvatarFile(file)
+    setEditAvatarPreview(URL.createObjectURL(file))
+  }
+
+  const handleSaveProfile = async () => {
+    if (!user) return
+    if (!editName.trim()) {
+      notify('Name cannot be empty.', 'error')
+      return
+    }
+    if (!editEmail.trim() || !editEmail.includes('@')) {
+      notify('Please enter a valid email address.', 'error')
+      return
+    }
+    setSaving(true)
+    try {
+      let finalAvatarUrl = editAvatarPreview
+      if (editAvatarFile) {
+        try {
+          const ext = editAvatarFile.name.split('.').pop() || 'jpg'
+          const filePath = `avatars/${user.id}-${Date.now()}.${ext}`
+          const res = await uploadFile('public-assets', filePath, editAvatarFile)
+          if (res.publicUrl) finalAvatarUrl = res.publicUrl
+        } catch {
+          const reader = new FileReader()
+          finalAvatarUrl = await new Promise<string>((resolve) => {
+            reader.onloadend = () => resolve(reader.result as string)
+            reader.readAsDataURL(editAvatarFile)
+          })
+        }
+      }
+      await updateProfile({
+        name: editName.trim(),
+        email: editEmail.trim(),
+        avatarUrl: finalAvatarUrl,
+      })
+      notify('Profile updated successfully!', 'success')
+      setEditMode(false)
+    } catch (err: any) {
+      notify(err.message || 'Failed to update profile.', 'error')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -163,61 +242,176 @@ export function Navbar() {
                     role="menu"
                     aria-orientation="vertical"
                   >
-                    {/* Top: User profile information */}
-                    <div className="flex items-center gap-3">
-                      <div className="relative h-12 w-12 shrink-0 rounded-full border border-[#334155] overflow-hidden bg-[#0F172A]">
-                        {user.avatarUrl && !avatarError ? (
-                          <img
-                            src={user.avatarUrl}
-                            alt={user.name}
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center bg-gradient-to-tr from-brand/20 to-brand-purple/20 text-brand font-bold text-base select-none">
-                            {initials}
+                    {editMode ? (
+                      /* ---- INLINE EDIT PROFILE FORM ---- */
+                      <div className="space-y-4">
+                        {/* Header with back button */}
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setEditMode(false)}
+                            disabled={saving}
+                            className="rounded-lg p-1.5 text-ink-muted hover:bg-white/10 hover:text-white transition"
+                            aria-label="Back to menu"
+                          >
+                            <ArrowLeft className="h-4 w-4" />
+                          </button>
+                          <h3 className="text-sm font-bold text-white">Edit Profile</h3>
+                        </div>
+
+                        {/* Avatar upload */}
+                        <div className="flex flex-col items-center gap-2">
+                          <div className="relative group">
+                            <div className="h-20 w-20 rounded-full overflow-hidden border-2 border-brand/50 bg-[#0F172A] flex items-center justify-center">
+                              {editAvatarPreview ? (
+                                <img src={editAvatarPreview} alt={editName} className="h-full w-full object-cover" />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center bg-gradient-to-tr from-brand/20 to-brand-purple/20 text-brand font-bold text-2xl select-none">
+                                  {initials}
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => fileInputRef.current?.click()}
+                              className="absolute inset-0 flex flex-col items-center justify-center rounded-full bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity text-white text-xs font-semibold cursor-pointer"
+                              title="Change Photo"
+                            >
+                              <Camera className="h-5 w-5 mb-0.5 text-brand" />
+                              <span className="text-[10px]">Change</span>
+                            </button>
                           </div>
-                        )}
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            onChange={handleImageChange}
+                            className="hidden"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="text-[11px] text-brand hover:underline font-semibold"
+                          >
+                            Upload new picture
+                          </button>
+                        </div>
+
+                        {/* Name field */}
+                        <div>
+                          <label className="block text-[11px] font-semibold text-ink-muted mb-1" htmlFor="inline-edit-name">
+                            Full Name
+                          </label>
+                          <input
+                            id="inline-edit-name"
+                            type="text"
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            className="input text-xs h-9"
+                            placeholder="e.g. John Doe"
+                            required
+                          />
+                        </div>
+
+                        {/* Email field */}
+                        <div>
+                          <label className="block text-[11px] font-semibold text-ink-muted mb-1" htmlFor="inline-edit-email">
+                            Email Address
+                          </label>
+                          <input
+                            id="inline-edit-email"
+                            type="email"
+                            value={editEmail}
+                            onChange={(e) => setEditEmail(e.target.value)}
+                            className="input text-xs h-9"
+                            placeholder="e.g. john@example.com"
+                            required
+                          />
+                        </div>
+
+                        {/* Action buttons */}
+                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#334155]/60">
+                          <button
+                            type="button"
+                            onClick={() => setEditMode(false)}
+                            disabled={saving}
+                            className="btn-secondary px-3 py-1.5 text-xs"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSaveProfile}
+                            disabled={saving}
+                            className="btn-primary px-4 py-1.5 text-xs font-bold"
+                          >
+                            {saving ? (
+                              <>
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…
+                              </>
+                            ) : (
+                              'Save Changes'
+                            )}
+                          </button>
+                        </div>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="font-bold text-white text-sm truncate" title={user.name}>
-                          {user.name}
-                        </p>
-                        <p className="text-xs text-ink-muted truncate mt-0.5" title={user.email}>
-                          {user.email}
-                        </p>
-                        <span className="inline-block mt-1.5 rounded-full bg-brand/10 border border-brand/30 px-2 py-0.5 text-[10px] font-bold text-brand uppercase tracking-wider">
-                          {user.role}
-                        </span>
-                      </div>
-                    </div>
+                    ) : (
+                      /* ---- NORMAL DROPDOWN MENU ---- */
+                      <>
+                        {/* Top: User profile information */}
+                        <div className="flex items-center gap-3">
+                          <div className="relative h-12 w-12 shrink-0 rounded-full border border-[#334155] overflow-hidden bg-[#0F172A]">
+                            {user.avatarUrl && !avatarError ? (
+                              <img
+                                src={user.avatarUrl}
+                                alt={user.name}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-gradient-to-tr from-brand/20 to-brand-purple/20 text-brand font-bold text-base select-none">
+                                {initials}
+                              </div>
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-bold text-white text-sm truncate" title={user.name}>
+                              {user.name}
+                            </p>
+                            <p className="text-xs text-ink-muted truncate mt-0.5" title={user.email}>
+                              {user.email}
+                            </p>
+                            <span className="inline-block mt-1.5 rounded-full bg-brand/10 border border-brand/30 px-2 py-0.5 text-[10px] font-bold text-brand uppercase tracking-wider">
+                              {user.role}
+                            </span>
+                          </div>
+                        </div>
 
-                    {/* Subtle Divider */}
-                    <div className="my-3 border-t border-[#334155]/60" />
+                        {/* Subtle Divider */}
+                        <div className="my-3 border-t border-[#334155]/60" />
 
-                    {/* Edit Profile Option */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDropdownOpen(false)
-                        setIsEditProfileOpen(true)
-                      }}
-                      className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-xs sm:text-sm font-semibold text-ink-muted hover:bg-white/10 hover:text-white transition-colors duration-150 cursor-pointer"
-                      role="menuitem"
-                    >
-                      <UserPen className="h-4 w-4 shrink-0 text-brand" aria-hidden />
-                      <span>Edit Profile</span>
-                    </button>
+                        {/* Edit Profile Option */}
+                        <button
+                          type="button"
+                          onClick={openEditMode}
+                          className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-xs sm:text-sm font-semibold text-ink-muted hover:bg-white/10 hover:text-white transition-colors duration-150 cursor-pointer"
+                          role="menuitem"
+                        >
+                          <UserPen className="h-4 w-4 shrink-0 text-brand" aria-hidden />
+                          <span>Edit Profile</span>
+                        </button>
 
-                    {/* Bottom: Sign Out Option */}
-                    <button
-                      type="button"
-                      onClick={handleSignOut}
-                      className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-xs sm:text-sm font-semibold text-rose-400 hover:bg-rose-950/40 hover:text-rose-300 transition-colors duration-150 cursor-pointer"
-                      role="menuitem"
-                    >
-                      <LogOut className="h-4 w-4 shrink-0" aria-hidden />
-                      <span>Sign Out</span>
-                    </button>
+                        {/* Bottom: Sign Out Option */}
+                        <button
+                          type="button"
+                          onClick={handleSignOut}
+                          className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-xs sm:text-sm font-semibold text-rose-400 hover:bg-rose-950/40 hover:text-rose-300 transition-colors duration-150 cursor-pointer"
+                          role="menuitem"
+                        >
+                          <LogOut className="h-4 w-4 shrink-0" aria-hidden />
+                          <span>Sign Out</span>
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -270,7 +464,8 @@ export function Navbar() {
                   type="button"
                   onClick={() => {
                     setOpen(false)
-                    setIsEditProfileOpen(true)
+                    setDropdownOpen(true)
+                    openEditMode()
                   }}
                   className="btn-secondary w-full text-xs"
                 >
@@ -294,11 +489,6 @@ export function Navbar() {
         </div>
       )}
 
-      {/* Edit Profile Modal */}
-      <EditProfileModal
-        open={isEditProfileOpen}
-        onClose={() => setIsEditProfileOpen(false)}
-      />
     </header>
   )
 }
