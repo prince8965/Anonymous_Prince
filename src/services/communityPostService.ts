@@ -55,8 +55,8 @@ function enrichPost(
 ): CommunityPost {
   const likedUsers = likesMap[post.id] ?? []
   const likedByMe = likedUsers.includes(currentUserId)
-  const actualLikesCount = Math.max(post.likesCount, likedUsers.length)
-  const actualCommentsCount = commentCounts[post.id] ?? post.commentsCount
+  const actualLikesCount = likedUsers.length
+  const actualCommentsCount = commentCounts[post.id] ?? 0
 
   return {
     ...post,
