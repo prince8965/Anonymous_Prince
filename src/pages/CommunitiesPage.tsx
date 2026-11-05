@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
-import { Search, Users } from 'lucide-react'
+import { Plus, Search, Users } from 'lucide-react'
 import { CommunityCard } from '../components/communities/CommunityCard'
+import { CreateCommunityModal } from '../components/communities/CreateCommunityModal'
 import { CategoryChip } from '../components/ui/CategoryChip'
 import { DemoNote } from '../components/ui/DemoNote'
 import { EmptyState } from '../components/ui/EmptyState'
@@ -16,6 +17,7 @@ export default function CommunitiesPage() {
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<Category | 'all'>('all')
   const [onlyFollowing, setOnlyFollowing] = useState(false)
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -29,7 +31,21 @@ export default function CommunitiesPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <PageHeader title="Communities" subtitle="Follow groups to see their events first." />
+      <PageHeader
+        title="Communities"
+        subtitle="Follow groups to see their events first."
+        action={
+          <button
+            type="button"
+            onClick={() => setIsCreateModalOpen(true)}
+            className="btn-primary flex items-center justify-center gap-2 px-5 py-2.5 text-sm font-bold shadow-cyber hover:shadow-neon w-full sm:w-auto transition-all cursor-pointer"
+            aria-label="Create a new community"
+          >
+            <Plus className="h-4 w-4" />
+            <span>Create Community</span>
+          </button>
+        }
+      />
       <DemoNote>All communities are fictional. Follows are saved only in this browser (temporary demo behavior).</DemoNote>
 
       <div className="mt-6 flex flex-col gap-4">
@@ -95,6 +111,12 @@ export default function CommunitiesPage() {
           </div>
         )}
       </div>
+
+      {/* Create Community Modal */}
+      <CreateCommunityModal
+        open={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+      />
     </div>
   )
 }
