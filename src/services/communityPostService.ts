@@ -58,8 +58,16 @@ function enrichPost(
   const actualLikesCount = likedUsers.length
   const actualCommentsCount = commentCounts[post.id] ?? 0
 
+  // Keep the author's avatar & name in sync with their latest profile
+  const session = authAdapter.getSession()
+  const isOwnPost = post.authorId === currentUserId && session
+  const authorAvatar = isOwnPost && session.avatarUrl ? session.avatarUrl : post.authorAvatar
+  const authorName = isOwnPost ? session.name : post.authorName
+
   return {
     ...post,
+    authorAvatar,
+    authorName,
     likedByMe,
     likesCount: actualLikesCount,
     commentsCount: actualCommentsCount,
