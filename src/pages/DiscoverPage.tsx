@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight, CalendarSearch, ChevronLeft, ChevronRight, Flame, Navigation, PlusCircle, SlidersHorizontal } from 'lucide-react'
+import globeVideo from '../../background globe.mp4'
 import { EventCard } from '../components/events/EventCard'
 import { FilterPanel } from '../components/events/FilterPanel'
 import { LocationSelector } from '../components/events/LocationSelector'
@@ -91,40 +92,70 @@ export default function DiscoverPage() {
 
   return (
     <>
-      {/* Hero */}
-      <section className="relative overflow-hidden border-b border-[#1E293B] bg-gradient-to-b from-[#111827] via-[#0D1424] to-[#0B0F19]">
-        <div className="pointer-events-none absolute -right-20 -top-20 h-80 w-80 rounded-full bg-brand/15 blur-3xl" aria-hidden />
-        <div className="pointer-events-none absolute -left-20 top-1/3 h-72 w-72 rounded-full bg-brand-purple/15 blur-3xl" aria-hidden />
-        <div className="relative mx-auto max-w-7xl px-4 pb-10 pt-12 sm:px-6 sm:pt-16 lg:px-8">
+      {/* Hero Section with Background Globe Video */}
+      <section className="relative min-h-screen flex items-center overflow-hidden border-b border-[#1E293B] bg-[#0B0F19]">
+        {/* Layer 1: Background Video */}
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover z-0"
+          aria-hidden="true"
+        >
+          <source src={globeVideo} type="video/mp4" />
+        </video>
+
+        {/* Layer 2: Dark Transparent Gradient Overlay */}
+        <div
+          className="pointer-events-none absolute inset-0 z-10"
+          style={{
+            background:
+              'linear-gradient(180deg, rgba(5, 10, 31, 0.45) 0%, rgba(5, 10, 31, 0.55) 50%, rgba(11, 15, 25, 0.90) 100%)',
+          }}
+          aria-hidden="true"
+        />
+
+        {/* Layer 3: Hero Content */}
+        <div className="relative z-20 mx-auto w-full max-w-7xl px-4 py-16 sm:px-6 sm:py-24 lg:px-8">
           <div className="max-w-2xl">
-            <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-brand/30 bg-brand/10 px-3 py-1 text-xs font-semibold text-brand shadow-cyber">
+            <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-brand/30 bg-brand/10 px-3 py-1 text-xs font-semibold text-brand shadow-cyber backdrop-blur-xs">
               <Navigation className="h-3.5 w-3.5 text-brand" aria-hidden /> Find your people, nearby
             </p>
-            <h1 className="text-3xl font-bold tracking-tight text-white sm:text-5xl sm:leading-[1.1]">
+            <h1 className="text-3xl font-bold tracking-tight text-white sm:text-5xl lg:text-6xl sm:leading-[1.1]">
               Discover <span className="bg-gradient-to-r from-brand via-[#38BDF8] to-brand-purple bg-clip-text text-transparent">amazing events</span> around you.
             </h1>
-            <p className="mt-4 max-w-xl text-base text-ink-muted sm:text-lg">
+            <p className="mt-4 max-w-xl text-base text-ink-muted sm:text-lg leading-relaxed">
               Workshops, meetups, hackathons and gigs happening near campus. Pick your interests, RSVP in a tap, and
               follow the communities you love.
             </p>
-            <div className="mt-6 flex flex-wrap gap-3">
-              <button type="button" className="btn-primary px-5 py-3" onClick={scrollToResults}>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <button
+                type="button"
+                className="btn-primary px-6 py-3.5 text-base font-bold shadow-cyber hover:shadow-neon cursor-pointer"
+                onClick={scrollToResults}
+              >
                 Explore events <ArrowRight className="h-4 w-4" aria-hidden />
               </button>
-              <Link to="/organizer/create" className="btn-secondary px-5 py-3">
+              <Link to="/organizer/create" className="btn-secondary px-6 py-3.5 text-base font-semibold">
                 <PlusCircle className="h-4 w-4" aria-hidden /> Host an event
               </Link>
             </div>
           </div>
+        </div>
+      </section>
 
-          <div className="glass mt-8 rounded-2xl p-3 shadow-lift sm:p-4 border border-[#1E293B]">
+      {/* Search, Location, and Category Filters Section (Solid Dark Background) */}
+      <section className="relative border-b border-[#1E293B] bg-[#0B0F19] py-8">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-5">
+          <div className="glass rounded-2xl p-3 shadow-lift sm:p-4 border border-[#1E293B]">
             <div className="grid gap-3 md:grid-cols-[1fr_320px]">
               <SearchBar value={state.query} onChange={(query) => patch({ query })} />
               <LocationSelector className="h-12 [&_select]:h-12" />
             </div>
           </div>
 
-          <div className="mt-5 flex flex-wrap gap-2" role="group" aria-label="Browse by category">
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Browse by category">
             {CATEGORIES.map((c) => (
               <CategoryChip key={c} category={c} selected={state.category === c} onClick={() => pickCategory(c)} />
             ))}
