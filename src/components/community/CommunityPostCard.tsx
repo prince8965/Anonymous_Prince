@@ -29,6 +29,7 @@ import {
   deletePostComment,
   getCurrentUserId,
   getPostComments,
+  subscribeChange,
   togglePostLike,
 } from '../../services'
 import type { CommunityPost, PostComment } from '../../types'
@@ -80,10 +81,17 @@ export function CommunityPostCard({
     setCommentsCount(post.commentsCount)
   }, [post.likedByMe, post.likesCount, post.commentsCount])
 
-  // Load comments when drawer is opened
+  // Load comments when drawer is opened and subscribe to real-time changes
   useEffect(() => {
     if (!showComments) return
     let active = true
+
+    const load = () => {
+      getPostComments(post.id).then((res) => {
+        if (active) setComments(res)
+      })
+    }
+
     setCommentsLoading(true)
     getPostComments(post.id)
       .then((res) => {
@@ -92,8 +100,15 @@ export function CommunityPostCard({
       .finally(() => {
         if (active) setCommentsLoading(false)
       })
+
+    // Listen to real-time additions/deletions of comments
+    const unsub = subscribeChange(() => {
+      load()
+    })
+
     return () => {
       active = false
+      unsub()
     }
   }, [showComments, post.id])
 

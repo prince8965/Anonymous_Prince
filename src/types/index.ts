@@ -590,11 +590,11 @@ export interface AdminAuditLog {
   adminId: string
   adminName: string
   action:
-    | 'approve_verification'
-    | 'reject_verification'
-    | 'moderate_post'
-    | 'dismiss_report'
-    | 'update_user_role'
+  | 'approve_verification'
+  | 'reject_verification'
+  | 'moderate_post'
+  | 'dismiss_report'
+  | 'update_user_role'
   targetType: 'organization' | 'community_post' | 'user'
   targetId: string
   targetName?: string

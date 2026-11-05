@@ -35,3 +35,4 @@ create policy "Creator or admin can update their community"
   using (auth.uid() = creator_id or exists (
     select 1 from public.profiles where id = auth.uid() and role = 'admin'
   ));
+

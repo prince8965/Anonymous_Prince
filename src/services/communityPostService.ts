@@ -10,7 +10,7 @@ import type {
   PostSortKey,
 } from '../types'
 import { DEMO_OWNER_ID, authAdapter } from './authAdapter'
-import { delay } from './bus'
+import { delay, notifyChange } from './bus'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import {
   readCommunityPosts,
@@ -211,8 +211,8 @@ export async function createPost(input: CommunityPostInput): Promise<CommunityPo
     id: `post-${Date.now().toString(36)}`,
     authorId: currentUserId,
     authorName: currentUserName,
-    authorAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-    authorRole: session ? 'organizer' : 'student',
+    authorAvatar: session?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    authorRole: session?.role === 'organizer' ? 'organizer' : 'student',
     createdAt: new Date().toISOString(),
     content: input.content.trim(),
     category: input.category,
@@ -236,6 +236,7 @@ export async function createPost(input: CommunityPostInput): Promise<CommunityPo
 
   const posts = readCommunityPosts()
   writeCommunityPosts([newPost, ...posts])
+  notifyChange()
   return newPost
 }
 
@@ -315,6 +316,7 @@ export async function updatePost(id: string, input: Partial<CommunityPostInput>)
 
   posts[index] = updated
   writeCommunityPosts(posts)
+  notifyChange()
   return updated
 }
 
@@ -342,6 +344,7 @@ export async function deletePost(id: string): Promise<void> {
   // Clean up associated comments
   const comments = readPostComments()
   writePostComments(comments.filter((c) => c.postId !== id))
+  notifyChange()
 }
 
 /** Backend equivalent: POST /community/posts/:id/like */
@@ -371,6 +374,7 @@ export async function togglePostLike(postId: string): Promise<{ liked: boolean; 
     writeCommunityPosts(posts)
   }
 
+  notifyChange()
   return { liked: !hasLiked, count: nextUsers.length }
 }
 
@@ -403,8 +407,8 @@ export async function createPostComment(
     postId,
     authorId: currentUserId,
     authorName: currentUserName,
-    authorAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-    authorRole: session ? 'organizer' : 'student',
+    authorAvatar: session?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    authorRole: session?.role === 'organizer' ? 'organizer' : 'student',
     content: trimmed,
     createdAt: new Date().toISOString(),
     parentId,
@@ -422,6 +426,7 @@ export async function createPostComment(
     writeCommunityPosts(posts)
   }
 
+  notifyChange()
   return newComment
 }
 
@@ -450,6 +455,8 @@ export async function deletePostComment(commentId: string): Promise<void> {
     post.commentsCount = remainingForPost
     writeCommunityPosts(posts)
   }
+
+  notifyChange()
 }
 
 /** Backend equivalent: POST /community/posts/:id/report */

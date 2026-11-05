@@ -265,9 +265,8 @@ export function CreateCommunityModal({ open, onClose, onCreated }: Props) {
                   key={c}
                   type="button"
                   onClick={() => setAccent(c)}
-                  className={`h-7 w-7 rounded-full transition-transform cursor-pointer ${
-                    accent === c ? 'scale-125 ring-2 ring-white ring-offset-2 ring-offset-canvas' : 'opacity-80 hover:opacity-100'
-                  }`}
+                  className={`h-7 w-7 rounded-full transition-transform cursor-pointer ${accent === c ? 'scale-125 ring-2 ring-white ring-offset-2 ring-offset-canvas' : 'opacity-80 hover:opacity-100'
+                    }`}
                   style={{ backgroundColor: c }}
                   aria-label={`Select accent color ${c}`}
                 />
