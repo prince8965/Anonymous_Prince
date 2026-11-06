@@ -43,26 +43,41 @@ export async function getCommunities(): Promise<CommunityWithState[]> {
         }
       }
 
-      const { data, error } = await supabase
-        .from('communities')
-        .select('*')
-        .order('created_at', { ascending: false })
+      // 1. Fetch live communities and live follows counts in parallel
+      const [{ data: commData, error: commError }, { data: followsData }] = await Promise.all([
+        supabase.from('communities').select('*').order('created_at', { ascending: false }),
+        supabase.from('community_follows').select('community_id'),
+      ])
 
-      if (!error && data) {
-        const liveCommunities: Community[] = data.map((row: any) => ({
-          id: row.id,
-          name: row.name,
-          description: row.description,
-          category: row.category as Category,
-          memberCount: row.member_count ?? 1,
-          localityId: row.locality_id ?? 'andheri',
-          accent: row.accent ?? '#00F2FE',
-          isDemo: false,
-          creatorId: row.creator_id,
-          creatorRole: row.creator_role as UserRole,
-          creatorName: row.creator_name,
-          createdAt: row.created_at,
-        }))
+      if (!commError && commData) {
+        // Compute real-time member count directly from community_follows table
+        const followCounts: Record<string, number> = {}
+        if (followsData) {
+          for (const row of followsData) {
+            followCounts[row.community_id] = (followCounts[row.community_id] || 0) + 1
+          }
+        }
+
+        const liveCommunities: Community[] = commData.map((row: any) => {
+          // Member count is at least 1 (the creator) + total registered followers
+          const actualFollowers = followCounts[row.id] ?? 0
+          const memberCount = Math.max(row.member_count ?? 1, actualFollowers, 1)
+
+          return {
+            id: row.id,
+            name: row.name,
+            description: row.description,
+            category: row.category as Category,
+            memberCount,
+            localityId: row.locality_id ?? 'andheri',
+            accent: row.accent ?? '#00F2FE',
+            isDemo: false,
+            creatorId: row.creator_id,
+            creatorRole: row.creator_role as UserRole,
+            creatorName: row.creator_name,
+            createdAt: row.created_at,
+          }
+        })
 
         return liveCommunities.map((c) => withState(c, followed))
       }
