@@ -121,8 +121,45 @@ export async function getCommunityPosts(options: CommunityFeedOptions): Promise<
     posts = readCommunityPosts()
   }
 
-  const likesMap = readPostLikes()
-  const comments = readPostComments()
+  let likesMap = readPostLikes()
+  let comments = readPostComments()
+
+  // If Supabase is configured, fetch live likes and comments so all users see real counts & interactions
+  if (isSupabaseConfigured()) {
+    try {
+      const [{ data: dbLikes }, { data: dbComments }] = await Promise.all([
+        supabase.from('post_likes').select('post_id, user_id'),
+        supabase.from('post_comments').select('*').order('created_at', { ascending: true }),
+      ])
+
+      if (dbLikes) {
+        const liveLikesMap: Record<string, string[]> = {}
+        for (const l of dbLikes) {
+          if (!liveLikesMap[l.post_id]) liveLikesMap[l.post_id] = []
+          liveLikesMap[l.post_id].push(l.user_id)
+        }
+        likesMap = liveLikesMap
+      }
+
+      if (dbComments) {
+        comments = dbComments.map((c: any) => ({
+          id: c.id,
+          postId: c.post_id,
+          authorId: c.author_id,
+          authorName: c.author_name,
+          authorAvatar: c.author_avatar,
+          authorRole: c.author_role,
+          content: c.content,
+          createdAt: c.created_at,
+          parentId: c.parent_id,
+          replyToAuthor: c.reply_to_author,
+        }))
+      }
+    } catch (err) {
+      console.warn('Could not load likes and comments from Supabase:', err)
+    }
+  }
+
   const followedCommunityIds = new Set(readFollowedIds())
   const followedOrgIds = new Set(readFollowedOrgIds())
 
@@ -432,6 +469,7 @@ export async function deletePost(id: string): Promise<void> {
 /** Backend equivalent: POST /community/posts/:id/like */
 export async function togglePostLike(postId: string): Promise<{ liked: boolean; count: number }> {
   await delay(150)
+  const session = authAdapter.getSession()
   const currentUserId = getCurrentUserId()
   const likesMap = readPostLikes()
   const userLikes = likesMap[postId] ?? []
@@ -446,6 +484,24 @@ export async function togglePostLike(postId: string): Promise<{ liked: boolean; 
 
   likesMap[postId] = nextUsers
   writePostLikes(likesMap)
+
+  // Sync to Supabase if configured & user authenticated
+  if (isSupabaseConfigured() && session) {
+    try {
+      if (hasLiked) {
+        await supabase
+          .from('post_likes')
+          .delete()
+          .match({ post_id: postId, user_id: session.id })
+      } else {
+        await supabase
+          .from('post_likes')
+          .insert({ post_id: postId, user_id: session.id })
+      }
+    } catch (err) {
+      console.warn('Could not sync like to Supabase:', err)
+    }
+  }
 
   // Update post's stored likesCount
   const posts = readCommunityPosts()
@@ -463,6 +519,35 @@ export async function togglePostLike(postId: string): Promise<{ liked: boolean; 
 /** Backend equivalent: GET /community/posts/:id/comments */
 export async function getPostComments(postId: string): Promise<PostComment[]> {
   await delay(200)
+
+  // 1. Fetch from Supabase if configured
+  if (isSupabaseConfigured()) {
+    try {
+      const { data, error } = await supabase
+        .from('post_comments')
+        .select('*')
+        .eq('post_id', postId)
+        .order('created_at', { ascending: true })
+
+      if (!error && data) {
+        return data.map((c: any) => ({
+          id: c.id,
+          postId: c.post_id,
+          authorId: c.author_id,
+          authorName: c.author_name,
+          authorAvatar: c.author_avatar,
+          authorRole: c.author_role,
+          content: c.content,
+          createdAt: c.created_at,
+          parentId: c.parent_id,
+          replyToAuthor: c.reply_to_author,
+        }))
+      }
+    } catch (err) {
+      console.warn('Could not load comments from Supabase:', err)
+    }
+  }
+
   const all = readPostComments()
   return all
     .filter((c) => c.postId === postId)
@@ -497,6 +582,32 @@ export async function createPostComment(
     replyToAuthor,
   }
 
+  // 1. Sync to Supabase if configured & user authenticated
+  if (isSupabaseConfigured() && session) {
+    try {
+      const { data, error } = await supabase
+        .from('post_comments')
+        .insert({
+          post_id: postId,
+          author_id: session.id,
+          author_name: newComment.authorName,
+          author_avatar: newComment.authorAvatar,
+          author_role: newComment.authorRole,
+          content: newComment.content,
+          parent_id: newComment.parentId || null,
+          reply_to_author: newComment.replyToAuthor || null,
+        })
+        .select()
+        .maybeSingle()
+
+      if (!error && data) {
+        newComment.id = data.id
+      }
+    } catch (err) {
+      console.warn('Could not save comment to Supabase:', err)
+    }
+  }
+
   const comments = readPostComments()
   writePostComments([...comments, newComment])
 
@@ -515,7 +626,20 @@ export async function createPostComment(
 /** Backend equivalent: DELETE /community/comments/:id */
 export async function deletePostComment(commentId: string): Promise<void> {
   await delay(250)
+  const session = authAdapter.getSession()
   const currentUserId = getCurrentUserId()
+
+  if (isSupabaseConfigured() && session) {
+    try {
+      await supabase
+        .from('post_comments')
+        .delete()
+        .eq('id', commentId)
+    } catch (err) {
+      console.warn('Could not delete comment from Supabase:', err)
+    }
+  }
+
   const comments = readPostComments()
   const comment = comments.find((c) => c.id === commentId)
   if (!comment) return
