@@ -160,6 +160,19 @@ function assertOrganizerOrAdmin() {
 /** All stored events as plain records. Backend equivalent: GET /events */
 export async function getEvents(): Promise<Event[]> {
   await delay()
+  if (isSupabaseConfigured()) {
+    try {
+      const { data, error } = await supabase
+        .from('events')
+        .select('*')
+        .order('starts_at', { ascending: true })
+      if (!error && data) {
+        return data.map(mapDbEventToEvent)
+      }
+    } catch (err) {
+      console.warn('Failed to fetch events from Supabase in getEvents:', err)
+    }
+  }
   return readEvents()
 }
 
@@ -175,11 +188,15 @@ export async function getEventById(
 
   if (isSupabaseConfigured()) {
     try {
-      const { data, error } = await supabase
-        .from('events')
-        .select('*')
-        .eq('id', id)
-        .maybeSingle()
+      // Support query by UUID id or text slug
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+      let query = supabase.from('events').select('*')
+      if (isUuid) {
+        query = query.eq('id', id)
+      } else {
+        query = query.eq('slug', id)
+      }
+      const { data, error } = await query.maybeSingle()
 
       if (!error && data) {
         event = mapDbEventToEvent(data)
@@ -192,7 +209,7 @@ export async function getEventById(
       return null
     }
   } else {
-    event = readEvents().find((e) => e.id === id)
+    event = readEvents().find((e) => e.id === id || e.slug === id)
   }
 
   if (!event) return null

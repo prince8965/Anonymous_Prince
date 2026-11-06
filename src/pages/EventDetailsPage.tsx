@@ -38,6 +38,7 @@ export default function EventDetailsPage() {
     () => searchEvents({ ...defaultFilters, localityId, interests }),
     [localityId, interests],
   )
+  const communitiesRes = useAsync(getCommunities, [])
 
   const orgResult = useAsync(async () => {
     if (!event) return null
@@ -81,7 +82,6 @@ export default function EventDetailsPage() {
       </div>
     )
 
-  const communitiesRes = useAsync(getCommunities, [])
   const community = communitiesRes.data?.find((c) => c.id === event?.communityId)
   const locality = getLocality(event.localityId)
   const distance = formatDistance(event.distanceKm)
