@@ -17,12 +17,32 @@ function withState(c: Community, followed: Set<string>): CommunityWithState {
 
 /** Backend equivalent: GET /communities */
 export async function getCommunities(): Promise<CommunityWithState[]> {
-  await delay(150)
-  const followed = new Set(readFollowedIds())
+  const session = authAdapter.getSession()
+  let followed = new Set(readFollowedIds())
 
   // If Supabase is configured, fetch live communities if table exists, fallback to local/seed
   if (isSupabaseConfigured()) {
     try {
+      // Sync live community follows for this user if logged in
+      if (session) {
+        const { data: userCommunityFollows } = await supabase
+          .from('community_follows')
+          .select('community_id')
+          .eq('user_id', session.id)
+
+        if (userCommunityFollows) {
+          const remoteFollowedIds = userCommunityFollows.map((f: any) => f.community_id)
+          // Store directly without calling notifyChange to avoid re-triggering useAsync
+          const key = `nearcircle.follows.v1.${session.id}`
+          try {
+            window.localStorage.setItem(key, JSON.stringify(remoteFollowedIds))
+          } catch {
+            // ignore
+          }
+          followed = new Set(remoteFollowedIds)
+        }
+      }
+
       const { data, error } = await supabase
         .from('communities')
         .select('*')
@@ -44,8 +64,6 @@ export async function getCommunities(): Promise<CommunityWithState[]> {
           createdAt: row.created_at,
         }))
 
-        // Sync local cache with Supabase live communities
-        writeCommunities(liveCommunities)
         return liveCommunities.map((c) => withState(c, followed))
       }
     } catch {
@@ -165,8 +183,14 @@ export async function followCommunity(communityId: string): Promise<void> {
     }
 
     // Also update in Supabase if table exists
+    const session = authAdapter.getSession()
     if (isSupabaseConfigured()) {
       try {
+        if (session) {
+          await supabase
+            .from('community_follows')
+            .insert({ user_id: session.id, community_id: communityId })
+        }
         const { data } = await supabase
           .from('communities')
           .select('member_count')
@@ -203,8 +227,15 @@ export async function unfollowCommunity(communityId: string): Promise<void> {
     }
 
     // Also update in Supabase if table exists
+    const session = authAdapter.getSession()
     if (isSupabaseConfigured()) {
       try {
+        if (session) {
+          await supabase
+            .from('community_follows')
+            .delete()
+            .match({ user_id: session.id, community_id: communityId })
+        }
         const { data } = await supabase
           .from('communities')
           .select('member_count')

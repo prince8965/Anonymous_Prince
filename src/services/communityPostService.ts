@@ -76,9 +76,51 @@ function enrichPost(
 
 /** Backend equivalent: GET /community/posts */
 export async function getCommunityPosts(options: CommunityFeedOptions): Promise<CommunityPost[]> {
-  await delay(250)
   const currentUserId = getCurrentUserId()
-  const posts = readCommunityPosts()
+  let posts: CommunityPost[] = []
+
+  // 1. Fetch from Supabase if configured
+  if (isSupabaseConfigured()) {
+    try {
+      const { data, error } = await supabase
+        .from('community_posts')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (!error && data) {
+        posts = data.map((row: any) => ({
+          id: row.id,
+          authorId: row.author_id,
+          authorName: row.author_name,
+          authorAvatar: row.author_avatar,
+          authorRole: row.author_role,
+          createdAt: row.created_at,
+          content: row.content,
+          category: row.category,
+          imageUrl: row.image_url,
+          communityId: row.community_id,
+          organizationId: row.organization_id,
+          eventId: row.event_id,
+          localityId: row.locality_id,
+          customEventDate: row.custom_event_date,
+          customEventLocation: row.custom_event_location,
+          customEventLink: row.custom_event_link,
+          likesCount: row.likes_count ?? 0,
+          likedByMe: false,
+          commentsCount: row.comments_count ?? 0,
+          isDemo: false,
+        }))
+      }
+    } catch (err) {
+      console.warn('Could not load community posts from Supabase, falling back to local store:', err)
+    }
+  }
+
+  // Fallback to local store if Supabase returned nothing or is not configured
+  if (posts.length === 0) {
+    posts = readCommunityPosts()
+  }
+
   const likesMap = readPostLikes()
   const comments = readPostComments()
   const followedCommunityIds = new Set(readFollowedIds())
@@ -240,6 +282,38 @@ export async function createPost(input: CommunityPostInput): Promise<CommunityPo
     likedByMe: false,
     commentsCount: 0,
     isDemo: false,
+  }
+
+  // 1. If Supabase is configured and user is authenticated, persist to database so all users can see it
+  if (isSupabaseConfigured() && session) {
+    try {
+      const { data, error } = await supabase
+        .from('community_posts')
+        .insert({
+          author_id: session.id,
+          author_name: newPost.authorName,
+          author_avatar: newPost.authorAvatar,
+          author_role: newPost.authorRole,
+          content: newPost.content,
+          category: newPost.category,
+          image_url: newPost.imageUrl,
+          community_id: newPost.communityId,
+          organization_id: newPost.organizationId,
+          event_id: newPost.eventId,
+          locality_id: newPost.localityId,
+          custom_event_date: newPost.customEventDate,
+          custom_event_location: newPost.customEventLocation,
+          custom_event_link: newPost.customEventLink,
+        })
+        .select()
+        .maybeSingle()
+
+      if (!error && data) {
+        newPost.id = data.id
+      }
+    } catch (err) {
+      console.warn('Could not save post to Supabase, fallback to local store:', err)
+    }
   }
 
   const posts = readCommunityPosts()
@@ -520,11 +594,30 @@ export function mapDbOrgToOrganization(row: any): Organization {
 
 /** Backend equivalent: GET /organizations */
 export async function getOrganizations(): Promise<Organization[]> {
-  await delay(200)
-  const followed = new Set(readFollowedOrgIds())
+  const session = authAdapter.getSession()
+  let followed = new Set(readFollowedOrgIds())
 
   if (isSupabaseConfigured()) {
     try {
+      // If signed in, fetch live follows for THIS user from Supabase
+      if (session) {
+        const { data: userFollows } = await supabase
+          .from('organization_follows')
+          .select('organization_id')
+          .eq('user_id', session.id)
+
+        if (userFollows) {
+          const remoteFollowedIds = userFollows.map((f: any) => f.organization_id)
+          const key = `nearcircle.org_follows.v1.${session.id}`
+          try {
+            window.localStorage.setItem(key, JSON.stringify(remoteFollowedIds))
+          } catch {
+            // ignore
+          }
+          followed = new Set(remoteFollowedIds)
+        }
+      }
+
       const { data, error } = await supabase
         .from('organizations')
         .select('*')
@@ -534,11 +627,9 @@ export async function getOrganizations(): Promise<Organization[]> {
         return data.map((row) => {
           const org = mapDbOrgToOrganization(row)
           const isFollowing = followed.has(org.id)
-          // Reflect follow state in the follower count
-          const followerCount = (org.followerCount || 0) + (isFollowing ? 1 : 0)
           return {
             ...org,
-            followerCount,
+            followerCount: (org.followerCount || 0) + (isFollowing ? 1 : 0),
             isFollowing,
           }
         })
@@ -558,10 +649,24 @@ export async function getOrganizations(): Promise<Organization[]> {
 /** Backend equivalent: GET /organizations/:id */
 export async function getOrganizationById(id: string): Promise<Organization | null> {
   await delay(150)
-  const followed = new Set(readFollowedOrgIds())
+  const session = authAdapter.getSession()
+  let followed = new Set(readFollowedOrgIds())
 
   if (isSupabaseConfigured()) {
     try {
+      if (session) {
+        const { data: userFollows } = await supabase
+          .from('organization_follows')
+          .select('organization_id')
+          .eq('user_id', session.id)
+
+        if (userFollows) {
+          const remoteFollowedIds = userFollows.map((f: any) => f.organization_id)
+          writeFollowedOrgIds(remoteFollowedIds)
+          followed = new Set(remoteFollowedIds)
+        }
+      }
+
       const { data, error } = await supabase
         .from('organizations')
         .select('*')

@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState } from 'react'
 import { Plus, Search, Users } from 'lucide-react'
 import { CommunityCard } from '../components/communities/CommunityCard'
 import { CreateCommunityModal } from '../components/communities/CreateCommunityModal'
@@ -9,7 +9,7 @@ import { ErrorState } from '../components/ui/ErrorState'
 import { PageHeader } from '../components/ui/PageHeader'
 import { Skeleton } from '../components/ui/Skeleton'
 import { useAsync } from '../hooks/useAsync'
-import { getCommunities, subscribeChange, isSupabaseConfigured } from '../services'
+import { getCommunities, isSupabaseConfigured } from '../services'
 import { CATEGORIES, type Category } from '../types'
 
 export default function CommunitiesPage() {
@@ -18,14 +18,6 @@ export default function CommunitiesPage() {
   const [category, setCategory] = useState<Category | 'all'>('all')
   const [onlyFollowing, setOnlyFollowing] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
-
-  // Listen to bus changes (e.g. newly created community, follow/unfollow)
-  useEffect(() => {
-    const unsub = subscribeChange(() => {
-      reload()
-    })
-    return () => unsub()
-  }, [reload])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()

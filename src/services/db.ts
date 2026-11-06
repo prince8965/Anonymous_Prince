@@ -30,6 +30,8 @@ import type {
 import { readStore, writeStore } from '../utils/storage'
 import { notifyChange } from './bus'
 
+import { authAdapter } from './authAdapter'
+
 void SEED_COMMUNITIES
 
 const EVENTS_KEY = 'events.v1'
@@ -54,6 +56,12 @@ const POST_REPORTS_KEY = 'post_reports.v1'
 const NOTIFICATIONS_KEY = 'notifications.v1'
 const ADMIN_AUDIT_LOGS_KEY = 'admin_audit_logs.v1'
 
+function getUserStorageKey(baseKey: string): string {
+  const session = authAdapter.getSession()
+  const userId = session?.id || 'guest'
+  return `${baseKey}.${userId}`
+}
+
 export function readEvents(): Event[] {
   const stored = readStore<Event[] | null>(EVENTS_KEY, null)
   if (stored) return stored
@@ -67,24 +75,28 @@ export function writeEvents(events: Event[]): void {
 }
 
 export function readRsvps(): RSVP[] {
-  const stored = readStore<RSVP[] | null>(RSVPS_KEY, null)
+  const key = getUserStorageKey(RSVPS_KEY)
+  const stored = readStore<RSVP[] | null>(key, null)
   if (stored) return stored
   const initial: RSVP[] = []
-  writeStore(RSVPS_KEY, initial)
+  writeStore(key, initial)
   return initial
 }
 
 export function writeRsvps(rsvps: RSVP[]): void {
-  writeStore(RSVPS_KEY, rsvps)
+  const key = getUserStorageKey(RSVPS_KEY)
+  writeStore(key, rsvps)
   notifyChange()
 }
 
 export function readFollowedIds(): string[] {
-  return readStore<string[]>(FOLLOWS_KEY, [])
+  const key = getUserStorageKey(FOLLOWS_KEY)
+  return readStore<string[]>(key, [])
 }
 
 export function writeFollowedIds(ids: string[]): void {
-  writeStore(FOLLOWS_KEY, ids)
+  const key = getUserStorageKey(FOLLOWS_KEY)
+  writeStore(key, ids)
   notifyChange()
 }
 
@@ -151,15 +163,17 @@ export function writeOrganizations(orgs: Organization[]): void {
 }
 
 export function readFollowedOrgIds(): string[] {
-  const stored = readStore<string[] | null>(ORG_FOLLOWS_KEY, null)
+  const key = getUserStorageKey(ORG_FOLLOWS_KEY)
+  const stored = readStore<string[] | null>(key, null)
   if (stored) return stored
   const initial: string[] = []
-  writeStore(ORG_FOLLOWS_KEY, initial)
+  writeStore(key, initial)
   return initial
 }
 
 export function writeFollowedOrgIds(ids: string[]): void {
-  writeStore(ORG_FOLLOWS_KEY, ids)
+  const key = getUserStorageKey(ORG_FOLLOWS_KEY)
+  writeStore(key, ids)
   notifyChange()
 }
 
