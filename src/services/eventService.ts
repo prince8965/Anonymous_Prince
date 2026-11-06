@@ -211,6 +211,52 @@ export async function getEventById(
 }
 
 /**
+ * Cleans up expired events from the database and local store.
+ * Retention policy:
+ * - Active / unexpired events are preserved.
+ * - Expired events are retained for 30 days.
+ * - Events expired for more than 30 days are automatically removed from the database and store.
+ * - Community and post data are NEVER touched and remain permanently.
+ */
+let lastCleanupTime = 0
+export async function cleanupExpiredEvents(): Promise<void> {
+  const now = Date.now()
+  // Run cleanup at most once per 5 minutes to avoid excessive DB calls
+  if (now - lastCleanupTime < 5 * 60 * 1000) return
+  lastCleanupTime = now
+
+  const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000
+  const cutoffIso = new Date(now - THIRTY_DAYS_MS).toISOString()
+
+  // 1. Clean up from Supabase if configured
+  if (isSupabaseConfigured()) {
+    try {
+      await supabase
+        .from('events')
+        .delete()
+        .lt('ends_at', cutoffIso)
+    } catch (err) {
+      console.warn('Expired events DB cleanup note:', err)
+    }
+  }
+
+  // 2. Clean up from local cache/store
+  try {
+    const currentEvents = readEvents()
+    const cutoffTimestamp = now - THIRTY_DAYS_MS
+    const filtered = currentEvents.filter((e) => {
+      const endsTime = new Date(e.endsAt).getTime()
+      return isNaN(endsTime) || endsTime >= cutoffTimestamp
+    })
+    if (filtered.length !== currentEvents.length) {
+      writeEvents(filtered)
+    }
+  } catch (err) {
+    console.warn('Local events cleanup note:', err)
+  }
+}
+
+/**
  * Public discovery search for hackathons and campus events.
  * Fully supports filtering by category/domain, mode, technologies (tags), location/radius,
  * registration deadline, prizes, team-size limits, sorting, and pagination.
@@ -220,6 +266,9 @@ export async function getEventById(
  * Backend equivalent: GET /hackathons?...
  */
 export async function searchHackathons(filters: EventFilters): Promise<PaginatedEvents> {
+  // Trigger cleanup in background for events older than 30 days past deadline
+  cleanupExpiredEvents().catch(() => {})
+
   await delay(150)
   const ctx = buildContext(filters.localityId, filters.interests)
   const q = filters.query.trim().toLowerCase()

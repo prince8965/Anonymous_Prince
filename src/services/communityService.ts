@@ -12,7 +12,7 @@ export interface CommunityWithState extends Community {
 
 function withState(c: Community, followed: Set<string>): CommunityWithState {
   const isFollowing = followed.has(c.id)
-  return { ...c, isFollowing, members: c.memberCount + (isFollowing ? 1 : 0) }
+  return { ...c, isFollowing, members: c.memberCount }
 }
 
 /** Backend equivalent: GET /communities */
@@ -28,7 +28,7 @@ export async function getCommunities(): Promise<CommunityWithState[]> {
         .select('*')
         .order('created_at', { ascending: false })
 
-      if (!error && data && data.length > 0) {
+      if (!error && data) {
         const liveCommunities: Community[] = data.map((row: any) => ({
           id: row.id,
           name: row.name,
@@ -44,6 +44,8 @@ export async function getCommunities(): Promise<CommunityWithState[]> {
           createdAt: row.created_at,
         }))
 
+        // Sync local cache with Supabase live communities
+        writeCommunities(liveCommunities)
         return liveCommunities.map((c) => withState(c, followed))
       }
     } catch {
@@ -153,6 +155,34 @@ export async function followCommunity(communityId: string): Promise<void> {
   const ids = readFollowedIds()
   if (!ids.includes(communityId)) {
     writeFollowedIds([...ids, communityId])
+
+    // Update memberCount in local store
+    const communities = readCommunities()
+    const target = communities.find((c) => c.id === communityId)
+    if (target) {
+      target.memberCount += 1
+      writeCommunities(communities)
+    }
+
+    // Also update in Supabase if table exists
+    if (isSupabaseConfigured()) {
+      try {
+        const { data } = await supabase
+          .from('communities')
+          .select('member_count')
+          .eq('id', communityId)
+          .maybeSingle()
+        if (data) {
+          await supabase
+            .from('communities')
+            .update({ member_count: (data.member_count ?? 0) + 1 })
+            .eq('id', communityId)
+        }
+      } catch {
+        // ignore if table not present
+      }
+    }
+
     notifyChange()
   }
 }
@@ -160,6 +190,37 @@ export async function followCommunity(communityId: string): Promise<void> {
 /** Backend equivalent: DELETE /communities/:id/follow */
 export async function unfollowCommunity(communityId: string): Promise<void> {
   await delay(150)
-  writeFollowedIds(readFollowedIds().filter((id) => id !== communityId))
-  notifyChange()
+  const ids = readFollowedIds()
+  if (ids.includes(communityId)) {
+    writeFollowedIds(ids.filter((id) => id !== communityId))
+
+    // Update memberCount in local store
+    const communities = readCommunities()
+    const target = communities.find((c) => c.id === communityId)
+    if (target) {
+      target.memberCount = Math.max(1, target.memberCount - 1)
+      writeCommunities(communities)
+    }
+
+    // Also update in Supabase if table exists
+    if (isSupabaseConfigured()) {
+      try {
+        const { data } = await supabase
+          .from('communities')
+          .select('member_count')
+          .eq('id', communityId)
+          .maybeSingle()
+        if (data) {
+          await supabase
+            .from('communities')
+            .update({ member_count: Math.max(1, (data.member_count ?? 1) - 1) })
+            .eq('id', communityId)
+        }
+      } catch {
+        // ignore if table not present
+      }
+    }
+
+    notifyChange()
+  }
 }

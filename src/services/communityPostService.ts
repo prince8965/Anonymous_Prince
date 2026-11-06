@@ -531,10 +531,17 @@ export async function getOrganizations(): Promise<Organization[]> {
         .order('follower_count', { ascending: false })
 
       if (!error && data && data.length > 0) {
-        return data.map((row) => ({
-          ...mapDbOrgToOrganization(row),
-          isFollowing: followed.has(row.id),
-        }))
+        return data.map((row) => {
+          const org = mapDbOrgToOrganization(row)
+          const isFollowing = followed.has(org.id)
+          // Reflect follow state in the follower count
+          const followerCount = (org.followerCount || 0) + (isFollowing ? 1 : 0)
+          return {
+            ...org,
+            followerCount,
+            isFollowing,
+          }
+        })
       }
     } catch (err) {
       console.warn('Could not load organizations from Supabase, falling back to local:', err)
@@ -562,9 +569,12 @@ export async function getOrganizationById(id: string): Promise<Organization | nu
         .maybeSingle()
 
       if (!error && data) {
+        const org = mapDbOrgToOrganization(data)
+        const isFollowing = followed.has(data.id)
         return {
-          ...mapDbOrgToOrganization(data),
-          isFollowing: followed.has(data.id),
+          ...org,
+          followerCount: (org.followerCount || 0) + (isFollowing ? 1 : 0),
+          isFollowing,
         }
       }
     } catch (err) {
@@ -781,13 +791,27 @@ export async function followOrganization(orgId: string): Promise<void> {
   if (!followed.includes(orgId)) {
     writeFollowedOrgIds([...followed, orgId])
 
-    // Update follower count on org
+    // Update follower count on org in local cache
     const orgs = readOrganizations()
     const target = orgs.find((o) => o.id === orgId)
     if (target) {
       target.followerCount += 1
       writeOrganizations(orgs)
     }
+
+    // Attempt to register follow in Supabase if user is logged in
+    const session = authAdapter.getSession()
+    if (isSupabaseConfigured() && session) {
+      try {
+        await supabase
+          .from('organization_follows')
+          .insert({ user_id: session.id, organization_id: orgId })
+      } catch {
+        // Handled silently
+      }
+    }
+
+    notifyChange()
   }
 }
 
@@ -798,12 +822,27 @@ export async function unfollowOrganization(orgId: string): Promise<void> {
   if (followed.includes(orgId)) {
     writeFollowedOrgIds(followed.filter((id) => id !== orgId))
 
-    // Update follower count on org
+    // Update follower count on org in local cache
     const orgs = readOrganizations()
     const target = orgs.find((o) => o.id === orgId)
     if (target) {
       target.followerCount = Math.max(0, target.followerCount - 1)
       writeOrganizations(orgs)
     }
+
+    // Attempt to remove follow in Supabase if user is logged in
+    const session = authAdapter.getSession()
+    if (isSupabaseConfigured() && session) {
+      try {
+        await supabase
+          .from('organization_follows')
+          .delete()
+          .match({ user_id: session.id, organization_id: orgId })
+      } catch {
+        // Handled silently
+      }
+    }
+
+    notifyChange()
   }
 }
