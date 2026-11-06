@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check, LocateFixed, MapPin, Search } from 'lucide-react'
+import { Check, Loader2, LocateFixed, MapPin, Search } from 'lucide-react'
 import { LOCALITIES } from '../../data/localities'
 import { useApp } from '../../hooks/AppContext'
 import { useToast } from '../../hooks/ToastContext'
@@ -9,16 +9,24 @@ import { distanceKm } from '../../utils/geo'
 /**
  * Manual locality selection for Mumbai & Navi Mumbai.
  * Supports choosing from Mumbai / Navi Mumbai hubs or typing any custom road/area within the region.
+ * Features real-time current location detection with reverse geocoding via OpenStreetMap Nominatim.
  */
 export function LocationSelector({ className = '' }: { className?: string }) {
-  const { localityId, setLocalityId, detectLocation, isDetectingLocation } = useApp()
+  const { localityId, setLocalityId, detectedLocation, detectLocation, isDetectingLocation } = useApp()
   const { notify } = useToast()
   const [showCustomInput, setShowCustomInput] = useState(false)
   const [customText, setCustomText] = useState('')
   const [searching, setSearching] = useState(false)
 
-  const useMyLocation = () => {
-    void detectLocation(false)
+  const useMyLocation = async () => {
+    if (isDetectingLocation) return
+    const detectedId = await detectLocation(false)
+    if (detectedId) {
+      if (detectedLocation) {
+        setCustomText(detectedLocation.formattedLocation)
+      }
+      setShowCustomInput(false)
+    }
   }
 
   const handleCustomSearch = async () => {
@@ -77,7 +85,21 @@ export function LocationSelector({ className = '' }: { className?: string }) {
             className="btn-primary py-2 px-3 text-xs shrink-0"
             title="Search custom location in Mumbai / Navi Mumbai"
           >
-            {searching ? <LocateFixed className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+          </button>
+          <button
+            type="button"
+            onClick={useMyLocation}
+            disabled={isDetectingLocation}
+            className="btn-secondary py-2 px-3 text-xs shrink-0 transition-all duration-200"
+            title={isDetectingLocation ? 'Detecting your location…' : 'Detect my location'}
+            aria-label="Detect my location"
+          >
+            {isDetectingLocation ? (
+              <Loader2 className="h-4 w-4 animate-spin text-brand" aria-hidden />
+            ) : (
+              <LocateFixed className="h-4 w-4 text-brand transition-colors hover:text-white" aria-hidden />
+            )}
           </button>
           <button
             type="button"
@@ -105,6 +127,11 @@ export function LocationSelector({ className = '' }: { className?: string }) {
             }}
             className="input appearance-none pl-9 pr-8"
           >
+            {detectedLocation && (
+              <option value={detectedLocation.id} className="bg-secondary text-brand font-semibold">
+                {detectedLocation.formattedLocation}
+              </option>
+            )}
             <optgroup label="Mumbai Hubs">
               {LOCALITIES.filter((l) => l.city === 'Mumbai').map((l) => (
                 <option key={l.id} value={l.id} className="bg-secondary text-white">
@@ -141,11 +168,15 @@ export function LocationSelector({ className = '' }: { className?: string }) {
             type="button"
             onClick={useMyLocation}
             disabled={isDetectingLocation}
-            className="btn-secondary shrink-0 px-3"
-            title="Use my location (picks closest Mumbai / Navi Mumbai hub)"
-            aria-label="Use my location"
+            className="btn-secondary shrink-0 px-3 transition-all duration-200 cursor-pointer disabled:cursor-not-allowed"
+            title={isDetectingLocation ? 'Detecting your location…' : 'Detect my location'}
+            aria-label="Detect my location"
           >
-            <LocateFixed className={`h-4 w-4 text-brand ${isDetectingLocation ? 'animate-pulse' : ''}`} aria-hidden />
+            {isDetectingLocation ? (
+              <Loader2 className="h-4 w-4 animate-spin text-brand" aria-hidden />
+            ) : (
+              <LocateFixed className="h-4 w-4 text-brand transition-colors hover:text-white" aria-hidden />
+            )}
           </button>
         </>
       )}

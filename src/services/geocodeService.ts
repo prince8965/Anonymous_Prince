@@ -129,3 +129,110 @@ export async function geocodeMumbaiAddress(
     }
   }
 }
+
+export interface ReverseGeocodeResult {
+  latitude: number
+  longitude: number
+  city: string
+  district: string
+  formattedLocation: string // Formatted as "City, District" e.g. "Borivali, Mumbai Suburban"
+  rawAddress?: Record<string, string>
+}
+
+// In-memory cache to prevent repeated requests and respect Nominatim usage policy
+const reverseCache = new Map<string, { result: ReverseGeocodeResult; timestamp: number }>()
+const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
+
+export function parseNominatimAddress(
+  data: any,
+  lat: number,
+  lon: number
+): ReverseGeocodeResult {
+  const addr = data?.address || {}
+
+  // Prefer city, town, or village for the city name (or suburb/locality in metropolitan hubs)
+  const city =
+    addr.suburb ||
+    addr.city ||
+    addr.town ||
+    addr.village ||
+    addr.municipality ||
+    addr.city_district ||
+    addr.neighbourhood ||
+    addr.quarter ||
+    addr.hamlet ||
+    data?.name ||
+    ''
+
+  // Extract district when available
+  const district =
+    addr.district ||
+    addr.state_district ||
+    addr.county ||
+    (addr.city && addr.city.toLowerCase() !== city.toLowerCase() ? addr.city : '') ||
+    addr.city_district ||
+    addr.state ||
+    ''
+
+  let formattedLocation = ''
+  if (city && district) {
+    formattedLocation = `${city}, ${district}`
+  } else if (city) {
+    formattedLocation = city
+  } else if (district) {
+    formattedLocation = district
+  } else if (data?.display_name) {
+    const parts = String(data.display_name)
+      .split(',')
+      .map((p) => p.trim())
+      .filter(Boolean)
+    formattedLocation = parts.slice(0, 2).join(', ')
+  } else {
+    formattedLocation = 'Current Location'
+  }
+
+  return {
+    latitude: lat,
+    longitude: lon,
+    city: city || formattedLocation,
+    district: district || '',
+    formattedLocation,
+    rawAddress: addr,
+  }
+}
+
+/**
+ * Reverse geocodes coordinates into "City, District" using OpenStreetMap Nominatim.
+ * Endpoint: https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=LATITUDE&lon=LONGITUDE
+ */
+export async function reverseGeocodeNominatim(
+  lat: number,
+  lon: number
+): Promise<ReverseGeocodeResult> {
+  const cacheKey = `${lat.toFixed(4)},${lon.toFixed(4)}`
+  const cached = reverseCache.get(cacheKey)
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return cached.result
+  }
+
+  const endpoint = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`
+
+  const response = await fetch(endpoint, {
+    headers: {
+      Accept: 'application/json',
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(`Reverse geocoding HTTP error: ${response.status}`)
+  }
+
+  const data = await response.json()
+  if (!data || data.error) {
+    throw new Error(data?.error || 'Unable to identify location from coordinates.')
+  }
+
+  const result = parseNominatimAddress(data, lat, lon)
+  reverseCache.set(cacheKey, { result, timestamp: Date.now() })
+  return result
+}

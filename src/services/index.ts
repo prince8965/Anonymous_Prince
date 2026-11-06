@@ -112,7 +112,7 @@ export {
   resolveReportedPost,
   getPlatformAdminAnalytics,
 } from './adminService'
-export { geocodeMumbaiAddress } from './geocodeService'
-export type { GeocodeResult } from './geocodeService'
+export { geocodeMumbaiAddress, reverseGeocodeNominatim, parseNominatimAddress } from './geocodeService'
+export type { GeocodeResult, ReverseGeocodeResult } from './geocodeService'
 export { supabase, isSupabaseConfigured } from '../lib/supabase'
 

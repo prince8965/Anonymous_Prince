@@ -2,23 +2,29 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from 'react'
-import { DEFAULT_LOCALITY_ID, LOCALITIES } from '../data/localities'
-import { defaultFilters } from '../services'
+import { DEFAULT_LOCALITY_ID, registerDynamicLocality } from '../data/localities'
+import { defaultFilters, reverseGeocodeNominatim } from '../services'
 import type { Category } from '../types'
-import { distanceKm } from '../utils/geo'
 import { readStore, writeStore } from '../utils/storage'
-import { useAuth } from './AuthContext'
 import { useToast } from './ToastContext'
+
+export interface DetectedLocation {
+  id: string
+  name: string
+  city: string
+  formattedLocation: string // Formatted as "City, District" e.g. "Borivali, Mumbai Suburban"
+  lat: number
+  lng: number
+}
 
 interface AppValue {
   localityId: string
   setLocalityId: (id: string) => void
+  detectedLocation: DetectedLocation | null
   interests: Category[]
   toggleInterest: (c: Category) => void
   detectLocation: (silent?: boolean) => Promise<string | null>
@@ -28,6 +34,14 @@ interface AppValue {
 const AppContext = createContext<AppValue | null>(null)
 
 export function AppProvider({ children }: { children: ReactNode }) {
+  const [detectedLocation, setDetectedLocation] = useState<DetectedLocation | null>(() => {
+    const saved = readStore<DetectedLocation | null>('detected_location', null)
+    if (saved && saved.id) {
+      registerDynamicLocality(saved)
+    }
+    return saved
+  })
+
   const [localityId, setLocalityState] = useState<string>(() =>
     readStore('locality', DEFAULT_LOCALITY_ID)
   )
@@ -36,9 +50,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   )
   const [isDetectingLocation, setIsDetectingLocation] = useState(false)
 
-  const { isAuthenticated, user } = useAuth()
   const { notify } = useToast()
-  const hasAutoDetectedRef = useRef<string | null>(null)
 
   const setLocalityId = useCallback((id: string) => {
     setLocalityState(id)
@@ -57,70 +69,89 @@ export function AppProvider({ children }: { children: ReactNode }) {
     async (silent = false): Promise<string | null> => {
       if (!('geolocation' in navigator)) {
         if (!silent) {
-          notify('Location is not available in this browser.', 'info')
+          notify('Geolocation is not supported by your browser.', 'error')
         }
+        return null
+      }
+
+      if (isDetectingLocation) {
         return null
       }
 
       setIsDetectingLocation(true)
 
-      return new Promise((resolve) => {
+      return new Promise<string | null>((resolve) => {
         navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            setIsDetectingLocation(false)
-            const { latitude, longitude } = pos.coords
+          async (pos) => {
+            try {
+              const { latitude, longitude } = pos.coords
 
-            // Pick closest Mumbai or Navi Mumbai hub from coordinates
-            const nearest = LOCALITIES.reduce(
-              (best, l) => {
-                const d = distanceKm(latitude, longitude, l.lat, l.lng)
-                return d < best.d ? { id: l.id, d, name: l.name, city: l.city } : best
-              },
-              { id: LOCALITIES[0].id, d: Infinity, name: LOCALITIES[0].name, city: LOCALITIES[0].city }
-            )
+              // Call OpenStreetMap Nominatim reverse geocoding API
+              const rev = await reverseGeocodeNominatim(latitude, longitude)
 
-            setLocalityState(nearest.id)
-            writeStore('locality', nearest.id)
+              const detectedId = 'detected-current'
+              const detected: DetectedLocation = {
+                id: detectedId,
+                name: rev.city,
+                city: rev.district || rev.city,
+                formattedLocation: rev.formattedLocation,
+                lat: latitude,
+                lng: longitude,
+              }
 
-            if (!silent) {
-              notify(`📍 Location detected: ${nearest.name}, ${nearest.city}`, 'success')
+              registerDynamicLocality(detected)
+              setDetectedLocation(detected)
+              setLocalityState(detectedId)
+              writeStore('detected_location', detected)
+              writeStore('locality', detectedId)
+
+              if (!silent) {
+                notify(`📍 Location detected: ${rev.formattedLocation}`, 'success')
+              }
+              resolve(detectedId)
+            } catch (err) {
+              console.warn('Reverse geocoding failed:', err)
+              if (!silent) {
+                notify('Unable to identify your location. Please try again.', 'error')
+              }
+              resolve(null)
+            } finally {
+              setIsDetectingLocation(false)
             }
-            resolve(nearest.id)
           },
-          () => {
+          (err) => {
             setIsDetectingLocation(false)
             if (!silent) {
-              notify('Location permission was not granted. Pick your locality from the list instead.', 'info')
+              if (err.code === err.PERMISSION_DENIED) {
+                notify('Location permission denied. Please allow location access.', 'error')
+              } else if (err.code === err.POSITION_UNAVAILABLE) {
+                notify('Unable to detect your location. Please enable location services.', 'error')
+              } else if (err.code === err.TIMEOUT) {
+                notify('Location request timed out. Please try again.', 'error')
+              } else {
+                notify('Unable to detect your location. Please enable location services.', 'error')
+              }
             }
             resolve(null)
           },
-          { maximumAge: 300_000, timeout: 9000, enableHighAccuracy: true }
+          { maximumAge: 60_000, timeout: 10_000, enableHighAccuracy: true }
         )
       })
     },
-    [notify]
+    [isDetectingLocation, notify]
   )
-
-  // Automatically fetch location when user logs in or authenticated session is active
-  useEffect(() => {
-    if (isAuthenticated && user?.id) {
-      if (hasAutoDetectedRef.current !== user.id) {
-        hasAutoDetectedRef.current = user.id
-        void detectLocation(false)
-      }
-    }
-  }, [isAuthenticated, user?.id, detectLocation])
 
   const value = useMemo(
     () => ({
       localityId,
       setLocalityId,
+      detectedLocation,
       interests,
       toggleInterest,
       detectLocation,
       isDetectingLocation,
     }),
-    [localityId, setLocalityId, interests, toggleInterest, detectLocation, isDetectingLocation]
+    [localityId, setLocalityId, detectedLocation, interests, toggleInterest, detectLocation, isDetectingLocation]
   )
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

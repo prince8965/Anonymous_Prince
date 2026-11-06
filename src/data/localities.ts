@@ -49,5 +49,13 @@ export function isWithinMumbaiNaviMumbai(lat: number, lng: number): boolean {
   return lat >= 18.80 && lat <= 19.38 && lng >= 72.70 && lng <= 73.22
 }
 
+const dynamicLocalityRegistry = new Map<string, Locality>()
+
+export function registerDynamicLocality(locality: Locality): void {
+  dynamicLocalityRegistry.set(locality.id.toLowerCase(), locality)
+}
+
 export const getLocality = (id: string): Locality =>
-  LOCALITIES.find((l) => l.id.toLowerCase() === id.toLowerCase()) ?? LOCALITIES[0]
+  dynamicLocalityRegistry.get(id.toLowerCase()) ??
+  LOCALITIES.find((l) => l.id.toLowerCase() === id.toLowerCase()) ??
+  LOCALITIES[0]
